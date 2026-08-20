@@ -36,6 +36,7 @@ export interface SlackApiPort {
   updateMessage(input: SlackUpdateMessageInput): Promise<void>;
   deleteMessage(input: SlackDeleteMessageInput): Promise<void>;
   getPermalink(input: { channel: string; messageTs: string }): Promise<string>;
+  getReplyCount(input: { channel: string; messageTs: string }): Promise<number>;
 }
 
 export interface SlackSyncResult {
@@ -304,6 +305,19 @@ export class SlackWebApiAdapter implements SlackApiPort {
       });
     }
     return result.permalink;
+  }
+
+  async getReplyCount(input: {
+    channel: string;
+    messageTs: string;
+  }): Promise<number> {
+    const result = await this.client.conversations.replies({
+      channel: input.channel,
+      ts: input.messageTs,
+      limit: 15,
+    });
+    const root = result.messages?.[0] as { reply_count?: number } | undefined;
+    return root?.reply_count ?? 0;
   }
 }
 

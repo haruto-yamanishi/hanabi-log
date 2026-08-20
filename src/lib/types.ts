@@ -40,6 +40,12 @@ export interface ReportAuthor {
   avatarUrl?: string | null;
 }
 
+export interface ReportLiker {
+  id: string;
+  displayName: string;
+  avatarUrl?: string | null;
+}
+
 export interface RelatedLink {
   id?: string;
   label: string;
@@ -97,11 +103,13 @@ export interface Report {
   integration?: IntegrationBinding | null;
   likeCount?: number;
   likedByCurrentUser?: boolean;
+  likedBy?: ReportLiker[];
 }
 
 export interface ReportLikeSummary {
   likeCount: number;
   liked: boolean;
+  likedBy: ReportLiker[];
 }
 
 export interface ReportInput {

@@ -96,10 +96,12 @@ describe("MemoryReportRepository report likes", () => {
     await expect(repository.setReportLike(published.id, actor, true)).resolves.toEqual({
       likeCount: 1,
       liked: true,
+      likedBy: [{ id: actor.id, displayName: actor.displayName, avatarUrl: actor.avatarUrl }],
     });
     await expect(repository.setReportLike(published.id, actor, true)).resolves.toEqual({
       likeCount: 1,
       liked: true,
+      likedBy: [{ id: actor.id, displayName: actor.displayName, avatarUrl: actor.avatarUrl }],
     });
     await expect(repository.getReadableReport(published.id, actor)).resolves.toMatchObject({
       likeCount: 1,
@@ -108,6 +110,7 @@ describe("MemoryReportRepository report likes", () => {
     await expect(repository.setReportLike(published.id, actor, false)).resolves.toEqual({
       likeCount: 0,
       liked: false,
+      likedBy: [],
     });
   });
 });

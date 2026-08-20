@@ -68,8 +68,10 @@ Slack Appで、ログイン用OIDCとBot配信を分けて設定します。
 5. workspace ID、Bot token、channel IDを環境変数へ設定します。
 
 週間ベスト日報をランダムチャットへ送る場合は、Botをそのチャンネルにも参加させ、
-チャンネルIDを `SLACK_RANDOM_CHANNEL_ID` に設定します。毎週月曜の午前9時ごろ（JST）に、
-前週月曜〜日曜の公開日報からいいね数上位2件を1つのまとめ投稿として配信します。
+チャンネルIDを `SLACK_RANDOM_CHANNEL_ID` に設定します。Bot scopeには、日報チャンネルが
+公開なら `channels:history`、非公開なら `groups:history` も必要です。毎週日曜の22時ごろ（JST）に、
+その週の公開日報から「いいね最多のベスト投稿」と「Slack返信最多のベストディスカッション」を
+1件ずつまとめて配信します。
 
 ログイン時のworkspace IDは `SLACK_TEAM_ID` とサーバー側で照合します。最初のAdminは `ADMIN_SLACK_USER_IDS` にSlack user IDをカンマ区切りで指定します。この設定は初回登録時のbootstrapにだけ使われ、その後に管理画面で変更した権限は再ログインしても保持されます。
 
@@ -110,7 +112,7 @@ npm run test:e2e
 5. Productionへデプロイします。
 6. 本番URLを `APP_BASE_URL` とSlack redirect URLへ反映し、再デプロイします。
 
-`vercel.json` はVercel Hobbyで利用できるスケジュールとして、毎日03:00 JSTに `/api/cron/integrations`、毎週月曜09:00 JSTに `/api/cron/weekly-best` を呼びます。通常のSlack / Notion同期は日報の公開直後にも実行されます。Productionでは `CRON_SECRET` を必ず設定してください。HobbyのCronは指定時刻から最大1時間ほどずれる場合があります。
+`vercel.json` はVercel Hobbyで利用できるスケジュールとして、毎日03:00 JSTに `/api/cron/integrations`、毎週日曜22:00 JSTに `/api/cron/weekly-best` を呼びます。通常のSlack / Notion同期は日報の公開直後にも実行されます。Productionでは `CRON_SECRET` を必ず設定してください。HobbyのCronは指定時刻から最大1時間ほどずれる場合があります。
 
 ## Git運用例
 

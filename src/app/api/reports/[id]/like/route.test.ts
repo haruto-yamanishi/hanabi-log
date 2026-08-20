@@ -34,15 +34,23 @@ describe("/api/reports/[id]/like", () => {
   });
 
   it("adds a like idempotently", async () => {
-    mocks.setReportLike.mockResolvedValue({ likeCount: 3, liked: true });
+    mocks.setReportLike.mockResolvedValue({
+      likeCount: 3,
+      liked: true,
+      likedBy: [{ id: user.id, displayName: user.displayName, avatarUrl: null }],
+    });
     const response = await PUT(new Request(`https://hanabi.test/api/reports/${reportId}/like`), context);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ likeCount: 3, liked: true });
+    await expect(response.json()).resolves.toEqual({
+      likeCount: 3,
+      liked: true,
+      likedBy: [{ id: user.id, displayName: user.displayName, avatarUrl: null }],
+    });
     expect(mocks.setReportLike).toHaveBeenCalledWith(reportId, user, true);
   });
 
   it("removes the current member's like", async () => {
-    mocks.setReportLike.mockResolvedValue({ likeCount: 2, liked: false });
+    mocks.setReportLike.mockResolvedValue({ likeCount: 2, liked: false, likedBy: [] });
     const response = await DELETE(new Request(`https://hanabi.test/api/reports/${reportId}/like`), context);
     expect(response.status).toBe(200);
     expect(mocks.setReportLike).toHaveBeenCalledWith(reportId, user, false);

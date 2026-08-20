@@ -10,6 +10,7 @@ import type {
   Report,
   ReportFilters,
   ReportInput,
+  ReportLiker,
   ReportPage,
 } from "@/lib/types";
 import { getDatabase } from "@/server/db/client";
@@ -62,6 +63,13 @@ interface LikeSummaryRow {
   report_id: string;
   like_count: number;
   liked_by_current_user: boolean;
+}
+
+interface LikeMemberRow {
+  report_id: string;
+  id: string;
+  display_name: string;
+  avatar_url: string | null;
 }
 
 function reportColumns(sql: ReturnType<typeof getDatabase>) {
@@ -198,7 +206,7 @@ export class PostgresReportRepository implements ReportRepository {
   private async hydrate(rows: ReportRow[], actorId?: string): Promise<Report[]> {
     if (!rows.length) return [];
     const ids = rows.map((row) => row.id);
-    const [linkRows, attachmentRows, bindingRows, likeRows] = await Promise.all([
+    const [linkRows, attachmentRows, bindingRows, likeRows, likeMemberRows] = await Promise.all([
       this.sql<RelatedLinkRow[]>`
         select id, report_id, label, url, sort_order
         from related_links
@@ -227,6 +235,17 @@ export class PostgresReportRepository implements ReportRepository {
         where report_id in ${this.sql(ids)}
         group by report_id
       `,
+      this.sql<LikeMemberRow[]>`
+        select
+          likes.report_id::text as report_id,
+          members.id::text as id,
+          members.display_name,
+          members.avatar_url
+        from report_likes likes
+        join members on members.id = likes.member_id
+        where likes.report_id in ${this.sql(ids)}
+        order by likes.created_at, members.id
+      `,
     ]);
     const links = new Map<string, ReturnType<typeof mapRelatedLink>[]>();
     for (const row of linkRows) {
@@ -244,6 +263,16 @@ export class PostgresReportRepository implements ReportRepository {
       bindingRows.map((row) => [row.report_id, mapIntegrationBinding(row)]),
     );
     const likes = new Map(likeRows.map((row) => [row.report_id, row]));
+    const likedBy = new Map<string, ReportLiker[]>();
+    for (const row of likeMemberRows) {
+      const members = likedBy.get(row.report_id) ?? [];
+      members.push({
+        id: row.id,
+        displayName: row.display_name,
+        avatarUrl: row.avatar_url,
+      });
+      likedBy.set(row.report_id, members);
+    }
     return rows.map((row) => {
       const report = mapReport(
         row,
@@ -254,6 +283,7 @@ export class PostgresReportRepository implements ReportRepository {
       const like = likes.get(row.id);
       report.likeCount = like?.like_count ?? 0;
       report.likedByCurrentUser = like?.liked_by_current_user ?? false;
+      report.likedBy = likedBy.get(row.id) ?? [];
       return report;
     });
   }
@@ -381,7 +411,7 @@ export class PostgresReportRepository implements ReportRepository {
     reportId: string,
     actor: CurrentUser,
     liked: boolean,
-  ): Promise<{ likeCount: number; liked: boolean }> {
+  ): Promise<{ likeCount: number; liked: boolean; likedBy: ReportLiker[] }> {
     return this.sql.begin(async (rawTx) => {
       const tx = rawTx as Transaction;
       const rows = await tx<{ status: Report["status"] }[]>`
@@ -413,7 +443,26 @@ export class PostgresReportRepository implements ReportRepository {
         from report_likes
         where report_id = ${reportId}
       `;
-      return { likeCount: countRows[0]?.like_count ?? 0, liked };
+      const likedByRows = await tx<LikeMemberRow[]>`
+        select
+          likes.report_id::text as report_id,
+          members.id::text as id,
+          members.display_name,
+          members.avatar_url
+        from report_likes likes
+        join members on members.id = likes.member_id
+        where likes.report_id = ${reportId}
+        order by likes.created_at, members.id
+      `;
+      return {
+        likeCount: countRows[0]?.like_count ?? 0,
+        liked,
+        likedBy: likedByRows.map((row) => ({
+          id: row.id,
+          displayName: row.display_name,
+          avatarUrl: row.avatar_url,
+        })),
+      };
     });
   }
 

@@ -94,6 +94,9 @@ test("公開日報のいいねを切り替えられる", async ({ page }, testIn
   await likeButton.click();
   await expect(likeButton).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /^いいね済み/ })).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "いいねしたメンバー" }).getByText("HANABI Demo"),
+  ).toBeVisible();
 });
 
 test("管理者が確認後に日報を完全削除できる", async ({ page }) => {

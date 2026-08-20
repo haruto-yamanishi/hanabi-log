@@ -161,8 +161,10 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
       {report.status === "published" ? (
         <aside className="conversation-card">
           <ReportLikeButton
+            currentUser={user!}
             initialCount={report.likeCount ?? 0}
             initialLiked={report.likedByCurrentUser ?? false}
+            initialLikedBy={report.likedBy ?? []}
             reportId={report.id}
           />
           <div>

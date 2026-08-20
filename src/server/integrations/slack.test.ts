@@ -82,6 +82,7 @@ describe("SlackReportService", () => {
       updateMessage: vi.fn(async () => undefined),
       deleteMessage: vi.fn(async () => undefined),
       getPermalink: vi.fn(async () => "https://slack.test/archives/C1/p1001"),
+      getReplyCount: vi.fn(async () => 0),
     };
   }
 

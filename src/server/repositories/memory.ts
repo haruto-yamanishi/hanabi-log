@@ -10,6 +10,7 @@ import type {
   Report,
   ReportFilters,
   ReportInput,
+  ReportLikeSummary,
   ReportPage,
 } from "@/lib/types";
 import { canEditReport, canReadReport } from "@/lib/authorization";
@@ -174,10 +175,19 @@ function clone<T>(value: T): T {
 
 function reportWithLikes(report: Report, actorId?: string): Report {
   const likes = state().likes.get(report.id) ?? new Set<string>();
+  const likedBy = [...likes]
+    .map((memberId) => state().members.get(memberId))
+    .filter((member): member is Member => Boolean(member))
+    .map((member) => ({
+      id: member.id,
+      displayName: member.displayName,
+      avatarUrl: member.avatarUrl,
+    }));
   return {
     ...clone(report),
     likeCount: likes.size,
     likedByCurrentUser: actorId ? likes.has(actorId) : false,
+    likedBy,
   };
 }
 
@@ -382,7 +392,7 @@ export class MemoryReportRepository implements ReportRepository {
     reportId: string,
     actor: CurrentUser,
     liked: boolean,
-  ): Promise<{ likeCount: number; liked: boolean }> {
+  ): Promise<ReportLikeSummary> {
     const report = state().reports.get(reportId);
     if (!report) throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
     if (report.status !== "published") {
@@ -392,7 +402,11 @@ export class MemoryReportRepository implements ReportRepository {
     if (liked) likes.add(actor.id);
     else likes.delete(actor.id);
     state().likes.set(reportId, likes);
-    return { likeCount: likes.size, liked };
+    return {
+      likeCount: likes.size,
+      liked,
+      likedBy: reportWithLikes(report, actor.id).likedBy ?? [],
+    };
   }
 
   async listWeeklyBestReports(input: WeeklyBestInput): Promise<Report[]> {
