@@ -70,6 +70,8 @@ export interface WeeklyDigestDeliveryInput {
   channelId: string;
 }
 
+export type DeleteMemberResult = "deleted" | "not_found" | "has_reports";
+
 export interface OutboxRepository {
   claimJobs(options: ClaimJobsOptions): Promise<OutboxJob[]>;
   getReport(reportId: string): Promise<Report | null>;
@@ -87,6 +89,7 @@ export interface ReportRepository extends OutboxRepository {
   getMember(memberId: string): Promise<Member | null>;
   listMembers(): Promise<Member[]>;
   setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null>;
+  deleteMember(memberId: string): Promise<DeleteMemberResult>;
   listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage>;
   getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null>;
   setReportLike(

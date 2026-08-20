@@ -30,6 +30,43 @@ describe("MemoryReportRepository member management", () => {
     expect(afterAnotherLogin.role).toBe("admin");
     await expect(repository.listMembers()).resolves.toContainEqual(afterAnotherLogin);
   });
+
+  it("deletes an unused member and preserves an author with reports", async () => {
+    const repository = new MemoryReportRepository();
+    const unused = await repository.upsertMember({
+      slackTeamId: "T_TEST",
+      slackUserId: `U_UNUSED_${crypto.randomUUID()}`,
+      displayName: "Unused member",
+      role: "member",
+    });
+    await expect(repository.deleteMember(unused.id)).resolves.toBe("deleted");
+    await expect(repository.getMember(unused.id)).resolves.toBeNull();
+
+    const author = await repository.upsertMember({
+      slackTeamId: "T_TEST",
+      slackUserId: `U_AUTHOR_${crypto.randomUUID()}`,
+      displayName: "Report author",
+      role: "member",
+    });
+    await repository.createDraft(
+      {
+        id: author.id,
+        slackUserId: author.slackUserId,
+        displayName: author.displayName,
+        role: author.role,
+      },
+      {
+        reportDate: "2026-08-20",
+        title: "履歴保護テスト",
+        activityArea: "ロボット",
+        contentCategory: "進捗",
+        activityText: "メンバー削除時に日報を残す。",
+      },
+    );
+
+    await expect(repository.deleteMember(author.id)).resolves.toBe("has_reports");
+    await expect(repository.getMember(author.id)).resolves.not.toBeNull();
+  });
 });
 
 describe("MemoryReportRepository outbox claiming", () => {

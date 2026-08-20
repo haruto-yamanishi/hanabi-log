@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "rea
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type DeliveryTarget, type ReportStatus } from "@/lib/constants";
 import type { CurrentUser, MemberRole, PublicMember, Report, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
-import { AlertIcon, ArrowRightIcon, CheckIcon, RefreshIcon, SettingsIcon, UserIcon } from "@/components/icons";
+import { AlertIcon, ArrowRightIcon, CheckIcon, RefreshIcon, SettingsIcon, TrashIcon, UserIcon } from "@/components/icons";
 import { formatDateTime } from "@/components/report-card";
 import { Avatar, EmptyState, ErrorState, LoadingView, PageHeader } from "@/components/ui";
 
@@ -159,6 +159,24 @@ export function AdminScreen() {
     }
   }
 
+  async function deleteMember(member: PublicMember) {
+    if (member.id === user?.id) return;
+    if (!window.confirm(`${member.displayName}さんをメンバー一覧から削除しますか？\n日報を書いたことがあるメンバーは、記録保護のため削除できません。`)) return;
+    setUpdatingMemberId(member.id);
+    setNotice(null);
+    try {
+      await apiRequest<Record<string, never>>(`/api/members/${member.id}`, {
+        method: "DELETE",
+      });
+      setMembers((current) => current.filter((item) => item.id !== member.id));
+      setNotice(`${member.displayName}さんを削除しました。`);
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "メンバーを削除できませんでした");
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
   async function disconnectNotion() {
     if (!window.confirm("Notionとの接続を解除しますか？ 日報データは削除されません。")) return;
     setNotice(null);
@@ -269,10 +287,20 @@ export function AdminScreen() {
                         <option value="admin">Admin</option>
                       </select>
                     </label>
+                    <button
+                      aria-label={`${member.displayName}さんを削除`}
+                      className="button button--ghost button--icon button--small button--danger"
+                      disabled={member.id === user?.id || updatingMemberId === member.id}
+                      onClick={() => void deleteMember(member)}
+                      title={member.id === user?.id ? "自分自身は削除できません" : "メンバーを削除"}
+                      type="button"
+                    >
+                      <TrashIcon />
+                    </button>
                   </article>
                 ))}
               </div>
-              <p className="admin-footnote">新しいメンバーは、対象Slackワークスペースから初回ログインしたときに追加されます。</p>
+              <p className="admin-footnote">新しいメンバーは、対象Slackワークスペースから初回ログインしたときに追加されます。日報を書いたメンバーは過去の記録を残すため削除できません。</p>
             </section>
           ) : null}
 

@@ -1371,7 +1371,7 @@ strong {
 .sync-issue__body > small { color: var(--muted); font-size: 9px; }
 .sync-issue > .button { grid-column: 2; justify-self: start; }
 .member-list { display: grid; }
-.member-row { align-items: center; border-bottom: 1px solid var(--line); display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 13px 0; }
+.member-row { align-items: center; border-bottom: 1px solid var(--line); display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto auto; padding: 13px 0; }
 .member-row:last-child { border-bottom: 0; }
 .member-row > div { display: flex; flex-direction: column; min-width: 0; }
 .member-row strong { font-size: 12px; }

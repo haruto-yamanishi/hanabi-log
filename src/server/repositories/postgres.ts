@@ -36,6 +36,7 @@ import {
 } from "@/server/repositories/outbox";
 import type {
   ClaimJobsOptions,
+  DeleteMemberResult,
   EnqueueIntegrationRetryInput,
   MemberUpsertInput,
   ReportRepository,
@@ -328,6 +329,26 @@ export class PostgresReportRepository implements ReportRepository {
       returning *
     `;
     return rows[0] ? mapMember(rows[0]) : null;
+  }
+
+  async deleteMember(memberId: string): Promise<DeleteMemberResult> {
+    return this.sql.begin(async (rawTx) => {
+      const tx = rawTx as Transaction;
+      const deleted = await tx<{ id: string }[]>`
+        delete from members
+        where id = ${memberId}
+          and not exists (
+            select 1 from reports where author_id = ${memberId}
+          )
+        returning id::text as id
+      `;
+      if (deleted[0]) return "deleted";
+
+      const existing = await tx<{ id: string }[]>`
+        select id::text as id from members where id = ${memberId}
+      `;
+      return existing[0] ? "has_reports" : "not_found";
+    });
   }
 
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {

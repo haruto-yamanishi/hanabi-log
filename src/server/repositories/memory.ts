@@ -326,6 +326,16 @@ export class MemoryReportRepository implements ReportRepository {
     return clone(member);
   }
 
+  async deleteMember(memberId: string): Promise<"deleted" | "not_found" | "has_reports"> {
+    if (!state().members.has(memberId)) return "not_found";
+    if ([...state().reports.values()].some((report) => report.authorId === memberId)) {
+      return "has_reports";
+    }
+    state().members.delete(memberId);
+    for (const likes of state().likes.values()) likes.delete(memberId);
+    return "deleted";
+  }
+
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {
     const cursor = filters.cursor ? decodeReportCursor(filters.cursor) : null;
     if (filters.cursor && !cursor) {

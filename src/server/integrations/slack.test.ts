@@ -73,6 +73,40 @@ describe("renderSlackReport", () => {
     expect(payload.text).toContain("[アーカイブ]");
     expect(payload.blocks.some((block) => block.type === "actions")).toBe(false);
   });
+
+  it("includes related links and signed image previews", () => {
+    const payload = renderSlackReport(
+      report({
+        relatedLinks: [{
+          id: "link-1",
+          label: "設計資料 | drive",
+          url: "https://example.test/design?x=1&y=2",
+          sortOrder: 0,
+        }],
+        attachments: [{
+          id: "attachment-1",
+          storagePath: "member/report/robot.png",
+          filename: "robot.png",
+          mimeType: "image/png",
+          sizeBytes: 100,
+          altText: "組み立てたロボット",
+          sortOrder: 0,
+          signedUrl: "https://storage.example.test/robot.png?token=signed",
+        }],
+      }),
+      "https://log.example.test",
+    );
+
+    expect(JSON.stringify(payload.blocks)).toContain(
+      "https://example.test/design?x=1&amp;y=2",
+    );
+    expect(JSON.stringify(payload.blocks)).toContain("設計資料 ¦ drive");
+    expect(payload.blocks).toContainEqual(expect.objectContaining({
+      type: "image",
+      image_url: "https://storage.example.test/robot.png?token=signed",
+      alt_text: "組み立てたロボット",
+    }));
+  });
 });
 
 describe("SlackReportService", () => {
@@ -103,6 +137,45 @@ describe("SlackReportService", () => {
       messageTs: "100.1",
     });
     expect(result.operation).toBe("posted");
+  });
+
+  it("prepares private attachment URLs before posting", async () => {
+    const client = api();
+    const prepareReport = vi.fn(async (input: Report) => ({
+      ...input,
+      attachments: input.attachments.map((attachment) => ({
+        ...attachment,
+        signedUrl: "https://storage.example.test/signed-image",
+      })),
+    }));
+    const service = new SlackReportService(
+      client,
+      "C1",
+      "https://log.example.test",
+      prepareReport,
+    );
+    const input = report({
+      attachments: [{
+        id: "attachment-1",
+        storagePath: "member/report/robot.png",
+        filename: "robot.png",
+        mimeType: "image/png",
+        sizeBytes: 100,
+        sortOrder: 0,
+      }],
+    });
+
+    await service.sync(input, null);
+
+    expect(prepareReport).toHaveBeenCalledWith(input);
+    expect(client.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      blocks: expect.arrayContaining([
+        expect.objectContaining({
+          type: "image",
+          image_url: "https://storage.example.test/signed-image",
+        }),
+      ]),
+    }));
   });
 
   it("updates the bound message rather than creating a duplicate", async () => {

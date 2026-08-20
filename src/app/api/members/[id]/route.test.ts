@@ -6,6 +6,7 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
   setMemberRole: vi.fn(),
+  deleteMember: vi.fn(),
 }));
 
 vi.mock("@/server/auth", () => ({
@@ -13,10 +14,13 @@ vi.mock("@/server/auth", () => ({
 }));
 
 vi.mock("@/server/repositories", () => ({
-  getReportRepository: () => ({ setMemberRole: mocks.setMemberRole }),
+  getReportRepository: () => ({
+    setMemberRole: mocks.setMemberRole,
+    deleteMember: mocks.deleteMember,
+  }),
 }));
 
-import { PATCH } from "./route";
+import { DELETE, PATCH } from "./route";
 
 const admin: CurrentUser = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -108,5 +112,61 @@ describe("PATCH /api/members/:id", () => {
 
     expect(response.status).toBe(422);
     expect(mocks.setMemberRole).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/members/:id", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireCurrentUser.mockResolvedValue(admin);
+    mocks.deleteMember.mockResolvedValue("deleted");
+  });
+
+  it("lets an Admin delete another member without reports", async () => {
+    const response = await DELETE(
+      new Request(`https://hanabi.example/api/members/${target.id}`, { method: "DELETE" }),
+      context(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(mocks.deleteMember).toHaveBeenCalledWith(target.id);
+  });
+
+  it("rejects deletion from a Member", async () => {
+    mocks.requireCurrentUser.mockResolvedValue({ ...admin, role: "member" });
+
+    const response = await DELETE(request("member"), context());
+
+    expect(response.status).toBe(403);
+    expect(mocks.deleteMember).not.toHaveBeenCalled();
+  });
+
+  it("prevents an Admin from deleting their own account", async () => {
+    const response = await DELETE(request("member"), context(admin.id));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "SELF_DELETE_FORBIDDEN" },
+    });
+    expect(mocks.deleteMember).not.toHaveBeenCalled();
+  });
+
+  it("preserves a member who has authored reports", async () => {
+    mocks.deleteMember.mockResolvedValue("has_reports");
+
+    const response = await DELETE(request("member"), context());
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "MEMBER_HAS_REPORTS" },
+    });
+  });
+
+  it("returns 404 when the member does not exist", async () => {
+    mocks.deleteMember.mockResolvedValue("not_found");
+
+    const response = await DELETE(request("member"), context());
+
+    expect(response.status).toBe(404);
   });
 });

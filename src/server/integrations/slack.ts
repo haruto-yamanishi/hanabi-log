@@ -52,6 +52,8 @@ export interface SlackReportIntegration {
   remove(binding: IntegrationBinding | null): Promise<void>;
 }
 
+export type PrepareSlackReport = (report: Report) => Promise<Report>;
+
 const ACTIVITY_EMOJI: Record<Report["activityArea"], string> = {
   ロボット: "🤖",
   アワード: "🏆",
@@ -130,6 +132,48 @@ export function renderSlackReport(
     },
   ];
 
+  const links = [...report.relatedLinks]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((link) => {
+      const label = escapeMrkdwn(link.label).replaceAll("|", "¦");
+      return `• <${escapeMrkdwn(link.url)}|${label}>`;
+    });
+  if (links.length) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*関連リンク*\n${links.join("\n")}`,
+      },
+    });
+  }
+
+  const visibleAttachments = [...report.attachments]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .filter((attachment) => attachment.signedUrl)
+    .slice(0, 10);
+  for (const attachment of visibleAttachments) {
+    blocks.push({
+      type: "image",
+      image_url: attachment.signedUrl,
+      alt_text: (attachment.altText || attachment.filename || "日報の添付画像").slice(0, 2_000),
+      title: {
+        type: "plain_text",
+        text: attachment.filename.slice(0, 2_000),
+        emoji: true,
+      },
+    });
+  }
+  if (report.attachments.length > visibleAttachments.length) {
+    blocks.push({
+      type: "context",
+      elements: [{
+        type: "mrkdwn",
+        text: `ほか ${report.attachments.length - visibleAttachments.length} 件の画像は日報ページで確認できます。`,
+      }],
+    });
+  }
+
   if (!archived) {
     blocks.push({
       type: "actions",
@@ -153,13 +197,17 @@ export class SlackReportService implements SlackReportIntegration {
     private readonly api: SlackApiPort,
     private readonly channelId: string,
     private readonly appBaseUrl: string,
+    private readonly prepareReport?: PrepareSlackReport,
   ) {}
 
   async sync(
     report: Report,
     binding: IntegrationBinding | null,
   ): Promise<SlackSyncResult> {
-    const message = renderSlackReport(report, this.appBaseUrl);
+    const preparedReport = this.prepareReport
+      ? await this.prepareReport(report)
+      : report;
+    const message = renderSlackReport(preparedReport, this.appBaseUrl);
     const existingChannel = binding?.slackChannelId ?? this.channelId;
     const existingTs = binding?.slackMessageTs;
 
@@ -325,10 +373,12 @@ export function createSlackIntegration(input: {
   token: string;
   channelId: string;
   appBaseUrl: string;
+  prepareReport?: PrepareSlackReport;
 }): SlackReportIntegration {
   return new SlackReportService(
     SlackWebApiAdapter.fromToken(input.token),
     input.channelId,
     input.appBaseUrl,
+    input.prepareReport,
   );
 }

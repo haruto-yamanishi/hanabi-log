@@ -32,3 +32,30 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
     });
   });
 }
+
+export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
+  return apiResponse(async () => {
+    const actor = await requireCurrentUser();
+    if (actor.role !== "admin") {
+      throw new AppError("FORBIDDEN", "メンバーを削除できるのはAdminだけです", 403);
+    }
+
+    const memberId = memberIdSchema.parse((await context.params).id);
+    if (memberId === actor.id) {
+      throw new AppError("SELF_DELETE_FORBIDDEN", "自分自身を削除することはできません", 409);
+    }
+
+    const result = await getReportRepository().deleteMember(memberId);
+    if (result === "not_found") {
+      throw new AppError("NOT_FOUND", "メンバーが見つかりません", 404);
+    }
+    if (result === "has_reports") {
+      throw new AppError(
+        "MEMBER_HAS_REPORTS",
+        "このメンバーには日報があるため削除できません。過去の記録を保護するため、権限をMemberへ変更してください",
+        409,
+      );
+    }
+    return new Response(null, { status: 204 });
+  });
+}
