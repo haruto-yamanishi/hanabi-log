@@ -511,6 +511,24 @@ export function createOutboxProcessor(
 let configuredProcessor: OutboxProcessor | undefined;
 let runtimeProcessorPromise: Promise<OutboxProcessor | undefined> | undefined;
 
+/**
+ * Never construct real Slack or Notion adapters in demo/test runtimes.
+ * Keep this check independent from `server/env` so the pure integration tests
+ * can import this module without loading Next.js' `server-only` guard.
+ */
+export function externalIntegrationsDisabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const demoMode = environment.DEMO_MODE?.trim();
+  return (
+    demoMode === "true" ||
+    environment.NODE_ENV === "test" ||
+    (environment.NODE_ENV !== "production" &&
+      !demoMode &&
+      !environment.DATABASE_URL?.trim())
+  );
+}
+
 export function configureOutboxProcessor(
   dependencies: OutboxDependencies,
 ): () => void {
@@ -530,6 +548,7 @@ function notConfiguredSummary(): OutboxProcessSummary {
 
 async function getRuntimeProcessor(): Promise<OutboxProcessor | undefined> {
   if (configuredProcessor) return configuredProcessor;
+  if (externalIntegrationsDisabled()) return undefined;
   runtimeProcessorPromise ??= (async () => {
     const appBaseUrl = process.env.APP_BASE_URL;
     const slackToken = process.env.SLACK_BOT_TOKEN;

@@ -5,6 +5,7 @@ import { type IntegrationFailure } from "@/server/integrations/errors";
 import {
   createOutboxProcessor,
   decideOutboxRetry,
+  externalIntegrationsDisabled,
   makeOutboxDedupeKey,
 } from "@/server/integrations/outbox";
 import type { OutboxRepository } from "@/server/repositories/types";
@@ -69,6 +70,34 @@ function repository(jobs: OutboxJob[]): OutboxRepository {
 }
 
 describe("Outbox helpers", () => {
+  it("disables real integrations in demo and test runtimes", () => {
+    expect(
+      externalIntegrationsDisabled({
+        NODE_ENV: "development",
+        DEMO_MODE: "true",
+        DATABASE_URL: "postgresql://production.example/database",
+        SLACK_BOT_TOKEN: "real-token-must-not-be-used",
+      }),
+    ).toBe(true);
+    expect(
+      externalIntegrationsDisabled({
+        NODE_ENV: "test",
+        DEMO_MODE: "false",
+        DATABASE_URL: "postgresql://test.example/database",
+      }),
+    ).toBe(true);
+    expect(
+      externalIntegrationsDisabled({ NODE_ENV: "development" }),
+    ).toBe(true);
+    expect(
+      externalIntegrationsDisabled({
+        NODE_ENV: "production",
+        DEMO_MODE: "false",
+        DATABASE_URL: "postgresql://production.example/database",
+      }),
+    ).toBe(false);
+  });
+
   it("uses the specified dedupe key contract", () => {
     expect(makeOutboxDedupeKey("r1", "notion", "publish", 3)).toBe(
       "r1:notion:publish:3",

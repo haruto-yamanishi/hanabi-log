@@ -11,7 +11,14 @@ export default defineConfig({
     command: "npm run dev",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
-    env: { DEMO_MODE: "true" },
+    env: {
+      DEMO_MODE: "true",
+      SLACK_BOT_TOKEN: "",
+      SLACK_CHANNEL_ID: "",
+      NOTION_OAUTH_CLIENT_ID: "",
+      NOTION_OAUTH_CLIENT_SECRET: "",
+      NOTION_TOKEN_ENCRYPTION_KEY: "",
+    },
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], browserName: "chromium" } },
