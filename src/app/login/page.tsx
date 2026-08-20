@@ -23,12 +23,8 @@ export default async function LoginPage({
         <div aria-hidden="true" className="login-firework login-firework--two" />
         <div className="login-story__content">
           <HanabiLogo className="login-wordmark" inverse />
-          <h1>今日の挑戦を、<br />明日のチームへ。</h1>
-          <p>活動、判断、学びを残して、Team Hanabiの知見をつないでいく部内ログです。</p>
-          <div className="login-story__quote">
-            <span aria-hidden="true">✦</span>
-            <p>小さな進捗も、次の誰かの大きなヒントになる。</p>
-          </div>
+          <h1>HANABI LOG</h1>
+          <p>FRC Team Hanabi 部内日報</p>
         </div>
       </section>
       <section className="login-panel" aria-labelledby="login-title">

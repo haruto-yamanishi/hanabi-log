@@ -10,13 +10,6 @@ import { ArrowRightIcon, CalendarIcon, PlusIcon } from "@/components/icons";
 import { ReportCard } from "@/components/report-card";
 import { EmptyState, ErrorState, SkeletonList } from "@/components/ui";
 
-function greeting(): string {
-  const hour = Number(new Intl.DateTimeFormat("en", { hour: "2-digit", hour12: false, timeZone: "Asia/Tokyo" }).format(new Date()));
-  if (hour < 11) return "おはようございます";
-  if (hour < 17) return "今日もおつかれさまです";
-  return "今日も一日おつかれさまでした";
-}
-
 export function HomeScreen() {
   const [reports, setReports] = useState<Report[]>([]);
   const [area, setArea] = useState<ActivityArea | "">("");
@@ -63,8 +56,7 @@ export function HomeScreen() {
       <header className="home-hero">
         <div>
           <p className="home-hero__date"><CalendarIcon />{dateLabel}</p>
-          <h1>{greeting()}<span aria-hidden="true">。</span></h1>
-          <p>今日の活動を短く残して、チームの次の一歩につなげよう。</p>
+          <h1>HANABI LOG</h1>
         </div>
         <Link className="button button--primary home-hero__action" href="/reports/new">
           <PlusIcon />
@@ -94,7 +86,7 @@ export function HomeScreen() {
             {todayReports.map((report) => <ReportCard key={report.id} report={report} />)}
           </div>
         ) : (
-          <EmptyState actionHref="/reports/new" actionLabel="最初の日報を書く" message={area ? "この活動領域の日報はまだありません。絞り込みを変えるか、今日の記録を残しましょう。" : "まだ今日の日報はありません。小さな進捗でも、明日のチームに役立つ記録になります。"} title="今日の一番乗りになろう" />
+          <EmptyState actionHref="/reports/new" actionLabel="日報を書く" title={area ? "この活動領域の日報はありません" : "今日の日報はありません"} />
         )}
       </section>
 
@@ -110,7 +102,7 @@ export function HomeScreen() {
             {recentReports.map((report) => <ReportCard key={report.id} report={report} />)}
           </div>
         ) : !loading && !error ? (
-          <p className="muted-copy">公開された日報がここに並びます。</p>
+          <p className="muted-copy">最近の日報はありません。</p>
         ) : null}
       </section>
     </div>

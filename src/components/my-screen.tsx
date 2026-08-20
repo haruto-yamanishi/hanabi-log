@@ -63,7 +63,6 @@ export function MyScreen() {
                 <h2>{user?.displayName || "Hanabiメンバー"}</h2>
                 <span className="role-badge">{user?.role === "admin" ? "Admin" : "Member"}</span>
               </div>
-              <p>あなたが残した活動と学び</p>
             </div>
             <dl className="profile-stats">
               <div><dt>公開済み</dt><dd>{loading ? "—" : reports.published.length}</dd></div>
@@ -95,8 +94,7 @@ export function MyScreen() {
               ) : (
                 <EmptyState
                   actionHref={tab === "draft" ? "/reports/new" : undefined}
-                  actionLabel={tab === "draft" ? "日報を書きはじめる" : undefined}
-                  message={tab === "draft" ? "書きかけの日報はありません。今日の活動を残してみましょう。" : tab === "published" ? "公開した日報がここに並びます。" : "アーカイブした日報はありません。"}
+                  actionLabel={tab === "draft" ? "日報を書く" : undefined}
                   title={tab === "draft" ? "下書きはありません" : tab === "published" ? "公開済みの日報はありません" : "アーカイブはありません"}
                 />
               )}

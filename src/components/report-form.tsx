@@ -254,7 +254,7 @@ export function ReportForm({
         <div>
           <Link className="back-link" href={report ? `/reports/${report.id}` : "/"}><ArrowLeftIcon />戻る</Link>
           <h1>{report ? "日報を編集" : "今日を記録する"}</h1>
-          <p>{report ? "変更した内容は、公開済みなら同じSlack投稿とNotionページへ反映されます。" : "必須項目は4つ。まずは今日やったことを短く残しましょう。"}</p>
+          <p>{report ? "公開済みの日報を保存すると、SlackとNotionにも反映されます。" : "必須項目は日付、活動領域、内容カテゴリ、今日やったことです。"}</p>
         </div>
         {report ? <span className={`status-badge status-badge--${report.status}`}>{report.status === "draft" ? "下書き" : report.status === "published" ? "公開済み" : "アーカイブ"}</span> : null}
       </header>
@@ -270,7 +270,7 @@ export function ReportForm({
       <div className="form-layout">
         <div className="form-main">
           <section aria-labelledby="required-heading" className="form-card form-card--required">
-            <div className="form-section-heading"><span>01</span><div><h2 id="required-heading">まず、今日の活動</h2><p>チームが一覧で見つけやすい情報です。</p></div></div>
+            <div className="form-section-heading"><span>01</span><div><h2 id="required-heading">基本情報</h2></div></div>
             <div className="field">
               <div className="field__label"><label htmlFor="title">タイトル<span className="optional-mark">任意</span></label><span className={values.title.length > 60 ? "counter counter--error" : "counter"}>{Array.from(values.title).length} / 60</span></div>
               <input aria-describedby={inputError("title") || "title-help"} aria-invalid={Boolean(errors.title)} autoComplete="off" id="title" maxLength={60} onChange={(event) => update("title", event.target.value)} placeholder="例：駆動系のギア比を見直した" value={values.title} />
@@ -307,7 +307,7 @@ export function ReportForm({
           </section>
 
           <section aria-labelledby="detail-heading" className="form-card">
-            <div className="form-section-heading"><span>02</span><div><h2 id="detail-heading">もう少し詳しく残す</h2><p>任意項目。未来のメンバーが判断を再現しやすくなります。</p></div></div>
+            <div className="form-section-heading"><span>02</span><div><h2 id="detail-heading">詳細</h2></div></div>
             <div className="field">
               <div className="field__label"><label htmlFor="summary">要約<span className="optional-mark">任意</span></label><span className="counter">{values.summary.length} / 100</span></div>
               <textarea id="summary" maxLength={100} onChange={(event) => update("summary", event.target.value)} placeholder="空欄なら「今日やったこと」から自動で作成します" rows={2} value={values.summary} />
@@ -333,7 +333,7 @@ export function ReportForm({
           </section>
 
           <section aria-labelledby="media-heading" className="form-card">
-            <div className="form-section-heading"><span>03</span><div><h2 id="media-heading">画像と関連リンク</h2><p>設計資料や作業中の写真を一緒に残せます。</p></div></div>
+            <div className="form-section-heading"><span>03</span><div><h2 id="media-heading">画像と関連リンク</h2></div></div>
             <div className="field">
               <div className="field__label"><span className="label-like">画像<span className="optional-mark">任意</span></span><span className="counter">{(totalImageSize / 1024 / 1024).toFixed(1)} / 10 MiB</span></div>
               <label className={`upload-zone${uploading ? " upload-zone--busy" : ""}`}>

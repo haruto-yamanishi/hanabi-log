@@ -682,18 +682,6 @@ strong {
   max-width: 450px;
 }
 
-.login-story__quote {
-  align-items: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  display: flex;
-  gap: 12px;
-  margin-top: 36px;
-  padding-top: 20px;
-}
-
-.login-story__quote span { color: var(--gold); font-size: 20px; }
-.login-story__quote p { color: #fff; font-size: 13px; margin: 0; }
-
 .login-firework {
   border: 1px solid rgba(245, 173, 52, 0.18);
   border-radius: 50%;
@@ -821,8 +809,7 @@ strong {
 .home-hero > * { position: relative; z-index: 1; }
 .home-hero__date { align-items: center; color: #c8d1dd; display: flex; font-size: 12px; gap: 7px; margin-bottom: 10px; }
 .home-hero__date svg { height: 17px; width: 17px; }
-.home-hero h1 { font-size: clamp(26px, 6.5vw, 40px); letter-spacing: -0.04em; line-height: 1.25; margin-bottom: 8px; }
-.home-hero > div > p:last-child { color: #c8d1dd; font-size: 13px; margin: 0; max-width: 500px; }
+.home-hero h1 { font-size: clamp(26px, 6.5vw, 40px); letter-spacing: -0.04em; line-height: 1.25; margin: 0; }
 .home-hero__action { background: #fff; box-shadow: none; color: var(--navy); }
 .home-hero__action:hover { background: #f4f2ed !important; color: var(--navy); }
 
@@ -1050,7 +1037,6 @@ strong {
 .profile-card .avatar { border: 3px solid rgba(255, 255, 255, 0.25); }
 .profile-card__copy > div { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
 .profile-card__copy h2 { font-size: 19px; margin: 0; }
-.profile-card__copy p { color: #bfc8d5; font-size: 12px; margin: 3px 0 0; }
 .profile-card .role-badge { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.16); color: #fff; }
 .profile-stats { display: flex; gap: 26px; grid-column: 1 / -1; margin: 4px 0 0; }
 .profile-stats > div { display: flex; flex-direction: column; }
@@ -1413,7 +1399,7 @@ strong {
     width: var(--sidebar-width);
     z-index: 60;
   }
-  .sidebar__brand { padding: 0 7px; }
+  .sidebar__brand { margin-bottom: 25px; padding: 0 7px; }
   .sidebar__brand::after {
     background: linear-gradient(90deg, var(--gold) 0 20%, var(--hanabi) 20% 40%, var(--success) 40% 60%, var(--purple) 60% 80%, var(--blue) 80% 100%);
     border-radius: 999px;
@@ -1423,7 +1409,6 @@ strong {
     margin-top: -14px;
     width: 76px;
   }
-  .sidebar__brand p { color: var(--muted); font-size: 10px; line-height: 1.55; margin: 16px 0 25px; max-width: 170px; }
   .sidebar__create { margin-bottom: 18px; width: 100%; }
   .sidebar__nav { display: grid; gap: 4px; }
   .nav-link { align-items: center; border-radius: 9px; color: var(--muted); display: flex; font-size: 13px; font-weight: 650; gap: 11px; min-height: 44px; padding: 9px 12px; }
@@ -1443,7 +1428,6 @@ strong {
   .page { padding-bottom: 70px; padding-top: 54px; }
   .page--home { padding-top: 42px; }
   .home-hero { padding: 38px; }
-  .home-hero > div > p:last-child { font-size: 14px; }
   .filter-chips { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
   .report-list { gap: 14px; }
   .search-layout { align-items: start; grid-template-columns: 282px minmax(0, 1fr); }
@@ -1592,12 +1576,6 @@ h3 {
   font-weight: 900;
   letter-spacing: 0;
   line-height: 1.28;
-}
-.login-story__quote {
-  background: transparent;
-  border-left: 4px solid var(--gold);
-  border-radius: 0;
-  padding: 7px 0 7px 18px;
 }
 .login-card { max-width: 430px; }
 .login-card h2 { font-size: 34px; }
@@ -1759,7 +1737,6 @@ h3 {
     padding-right: 18px;
   }
   .sidebar__brand::after { border-radius: 0; height: 4px; width: 100%; }
-  .sidebar__brand p { font-size: 11px; }
   .nav-link { border-radius: 0; }
   .nav-link:hover { background: var(--surface-soft); }
   .nav-link[aria-current="page"] {

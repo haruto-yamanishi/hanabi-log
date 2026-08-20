@@ -87,16 +87,16 @@ export function EmptyState({
   icon,
 }: {
   title: string;
-  message: string;
+  message?: string;
   actionHref?: string;
   actionLabel?: string;
   icon?: ReactNode;
 }) {
   return (
     <div className="empty-state">
-      <span aria-hidden="true" className="empty-state__icon">{icon || <span>✦</span>}</span>
+      {icon ? <span aria-hidden="true" className="empty-state__icon">{icon}</span> : null}
       <h2>{title}</h2>
-      <p>{message}</p>
+      {message ? <p>{message}</p> : null}
       {actionHref && actionLabel ? (
         <Link className="button button--primary" href={actionHref as Route}>
           <PlusIcon />

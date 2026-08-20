@@ -29,7 +29,6 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
       <aside className="sidebar">
         <div className="sidebar__brand">
           <HanabiMark />
-          <p>Team Hanabiの知見を、次へ。</p>
         </div>
         <Link className="button button--primary sidebar__create" href="/reports/new">
           <PlusIcon />
