@@ -1,0 +1,61 @@
+name: 機能追加・改善提案
+description: Hanabi LOGの新機能や改善案を提案します
+title: "[Enhancement] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提案ありがとうございます。実装者が判断しやすいように、目的と完了条件を明確にしてください。
+
+  - type: textarea
+    id: overview
+    attributes:
+      label: 概要
+      description: 何を追加・改善したいですか？
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景・目的
+      description: なぜこの変更が必要ですか？どんな問題を解決しますか？
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案内容
+      description: UI、動作、処理フローなど、想定している変更を書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: completion
+    attributes:
+      label: 完了条件
+      description: 何ができたらこのIssueを完了としますか？
+      placeholder: |
+        - [ ] 条件1
+        - [ ] 条件2
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 補足
+      description: モック、スクリーンショット、関連Issue、参考情報などがあれば記載してください。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 確認
+      options:
+        - label: 既存Issueに同じ提案がないことを確認しました
+          required: true
+        - label: 既存機能への影響を可能な範囲で確認しました
+          required: true
