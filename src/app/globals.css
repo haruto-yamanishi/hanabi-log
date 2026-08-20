@@ -1114,7 +1114,7 @@ strong {
 .contribution-graph .section-heading span, .contribution-graph p { color: var(--muted); font-size: 12px; margin: 0; }
 .contribution-graph__scroll { overflow-x: auto; padding-bottom: 4px; }
 .contribution-graph__chart { display: grid; gap: 7px; grid-template-columns: 14px max-content; min-width: 760px; }
-.contribution-graph__weekdays { color: var(--muted); display: grid; font-size: 10px; gap: 3px; grid-template-rows: repeat(7, 11px); line-height: 11px; text-align: right; }
+.contribution-graph__weekdays { color: var(--muted); display: grid; font-size: 10px; gap: 3px; grid-template-rows: repeat(7, 11px); line-height: 11px; margin-top: 16px; text-align: right; }
 .contribution-graph__months { color: var(--muted); display: grid; font-size: 10px; grid-template-columns: repeat(54, 11px); gap: 3px; height: 16px; line-height: 11px; overflow: visible; white-space: nowrap; }
 .contribution-graph__grid { display: grid; gap: 3px; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); width: max-content; }
 .contribution-graph__blank { height: 11px; width: 11px; }

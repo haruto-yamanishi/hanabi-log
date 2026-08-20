@@ -50,6 +50,18 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   });
 }
 
+export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+  return apiResponse(async () => {
+    await requireCurrentUser();
+    const memberId = memberIdSchema.parse((await context.params).id);
+    const member = await getReportRepository().getMember(memberId);
+    if (!member) throw new AppError("NOT_FOUND", "メンバーが見つかりません", 404);
+    return Response.json(toPublicMember(member), {
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  });
+}
+
 export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireCurrentUser();

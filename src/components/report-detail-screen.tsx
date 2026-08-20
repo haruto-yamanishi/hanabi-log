@@ -141,7 +141,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
           {report.summary ? <p className="report-article__summary">{report.summary}</p> : null}
           <div className="report-byline">
             <Avatar name={report.author.displayName} src={report.author.avatarUrl} />
-            <div><strong>{report.author.displayName}</strong><span><CalendarIcon /><time dateTime={report.reportDate}>{formatReportDate(report.reportDate, true)}</time></span></div>
+            <div><Link className="report-byline__author-link" href={`/members/${report.authorId}`}>{report.author.displayName}</Link><span><CalendarIcon /><time dateTime={report.reportDate}>{formatReportDate(report.reportDate, true)}</time></span></div>
             <p>最終更新 <time dateTime={report.updatedAt}>{formatDateTime(report.updatedAt)}</time></p>
           </div>
           {report.themeTags.length ? <ul aria-label="テーマタグ" className="tag-list tag-list--detail">{report.themeTags.map((tag) => <li key={tag}>#{tag}</li>)}</ul> : null}
