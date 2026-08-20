@@ -103,8 +103,11 @@ export function verifyNotionOAuthState(
 ): boolean {
   const [payloadValue, signatureValue, ...extra] = state.split(".");
   if (!payloadValue || !signatureValue || extra.length > 0) return false;
-  const actual = Buffer.from(signatureValue, "base64url");
-  const expected = signStatePayload(payloadValue, secret);
+  const actual = Buffer.from(signatureValue, "utf8");
+  const expected = Buffer.from(
+    signStatePayload(payloadValue, secret).toString("base64url"),
+    "utf8",
+  );
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     return false;
   }
