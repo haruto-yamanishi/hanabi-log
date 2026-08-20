@@ -112,6 +112,25 @@ export interface ReportLikeSummary {
   likedBy: ReportLiker[];
 }
 
+export interface ReportCommentAuthor {
+  id?: string;
+  displayName: string;
+  avatarUrl?: string | null;
+}
+
+export interface ReportComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  source: "slack" | "web";
+  author: ReportCommentAuthor;
+}
+
+export interface ReportCommentsResult {
+  available: boolean;
+  comments: ReportComment[];
+}
+
 export interface ReportInput {
   reportDate: string;
   title: string;

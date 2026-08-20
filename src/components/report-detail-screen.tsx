@@ -10,6 +10,7 @@ import { ArchiveIcon, ArrowLeftIcon, CalendarIcon, CheckIcon, EditIcon, External
 import { formatDateTime, formatReportDate, StatusBadge } from "@/components/report-card";
 import { SyncStatusPanel } from "@/components/sync-status";
 import { ReportLikeButton } from "@/components/report-like-button";
+import { ReportComments } from "@/components/report-comments";
 import { Avatar, ErrorState, LoadingView } from "@/components/ui";
 import { activityAreaClassName } from "@/lib/constants";
 
@@ -155,6 +156,14 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
           ) : null}
         </div>
       </article>
+
+      {report.status !== "draft" ? (
+        <ReportComments
+          canPost={report.status === "published"}
+          reportId={report.id}
+          slackUrl={slackUrl}
+        />
+      ) : null}
 
       {report.status !== "draft" ? <SyncStatusPanel integration={report.integration} /> : null}
 
