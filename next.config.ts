@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "secure.gravatar.com" },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "hanabi-log.vercel.app" }],
+        destination: "https://log.9494hanabi.com/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {
