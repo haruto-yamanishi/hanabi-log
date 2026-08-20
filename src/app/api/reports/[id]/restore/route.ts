@@ -1,5 +1,6 @@
 import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { requireCurrentUser } from "@/server/auth";
+import { scheduleReportJobs } from "@/server/integrations/schedule";
 import { getReportRepository } from "@/server/repositories";
 
 interface RouteContext {
@@ -11,6 +12,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const user = await requireCurrentUser();
     const id = reportId((await context.params).id);
     const report = await getReportRepository().restoreReport(id, user);
+    scheduleReportJobs(id);
     return reportResponse(report, request);
   });
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { requireCurrentUser } from "@/server/auth";
+import { scheduleReportJobs } from "@/server/integrations/schedule";
 import { getReportRepository } from "@/server/repositories";
 
 interface RouteContext {
@@ -16,6 +17,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const id = reportId(parameters.id);
     const target = targetSchema.parse(parameters.target);
     const report = await getReportRepository().requestIntegrationRetry(id, target, user);
+    scheduleReportJobs(id);
     return reportResponse(report, request);
   });
 }

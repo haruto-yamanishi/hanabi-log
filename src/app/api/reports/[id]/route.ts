@@ -8,6 +8,7 @@ import {
   requestJson,
 } from "@/app/api/_shared";
 import { requireCurrentUser } from "@/server/auth";
+import { scheduleReportJobs } from "@/server/integrations/schedule";
 import { getReportRepository } from "@/server/repositories";
 import { resolveReportTitle } from "@/lib/report-title";
 import { AppError } from "@/server/errors";
@@ -48,6 +49,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
       input.version,
       input.report,
     );
+    if (report.status === "published") scheduleReportJobs(id);
     return reportResponse(report, request);
   });
 }
