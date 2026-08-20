@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import type { Route } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { safeInternalCallbackUrl } from "@/lib/navigation";
 import { getCurrentUser } from "@/server/auth";
 import { HanabiLogo } from "@/components/logo";
+import { SlackSignInButton } from "@/components/slack-sign-in-button";
 
 export const metadata: Metadata = { title: "ログイン" };
 
@@ -16,7 +16,6 @@ export default async function LoginPage({
   const callbackUrl = safeInternalCallbackUrl((await searchParams).callbackUrl);
   const user = await getCurrentUser();
   if (user) redirect(callbackUrl as Route);
-  const signInUrl = `/api/auth/signin/slack?callbackUrl=${encodeURIComponent(callbackUrl)}` as Route;
   return (
     <main className="login-page">
       <section className="login-story" aria-label="HANABI LOGについて">
@@ -38,12 +37,7 @@ export default async function LoginPage({
           <p className="eyebrow">TEAM HANABI MEMBERS ONLY</p>
           <h2 id="login-title">おかえりなさい</h2>
           <p className="login-card__lead">チームのSlackアカウントでログインしてください。</p>
-          <Link className="slack-button" href={signInUrl} prefetch={false}>
-            <span aria-hidden="true" className="slack-logo">
-              <i /><i /><i /><i />
-            </span>
-            Slackでサインイン
-          </Link>
+          <SlackSignInButton callbackUrl={callbackUrl} />
           <div className="privacy-note">
             <span aria-hidden="true">●</span>
             <p><strong>非公開の部内サービスです</strong><br />対象のSlackワークスペース以外からはアクセスできません。</p>

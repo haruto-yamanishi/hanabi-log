@@ -754,7 +754,10 @@ strong {
   border: 1px solid var(--line-strong);
   border-radius: 11px;
   box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  cursor: pointer;
   display: flex;
+  font: inherit;
   font-weight: 700;
   gap: 13px;
   justify-content: center;
@@ -764,6 +767,7 @@ strong {
 }
 
 .slack-button:hover { background: var(--surface-soft); border-color: #aaa69e; }
+.slack-button:disabled { cursor: wait; opacity: 0.7; }
 
 .slack-logo {
   display: grid;
