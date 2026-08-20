@@ -452,7 +452,12 @@ export class PostgresReportRepository implements ReportRepository {
 
   async listLogRankings(): Promise<{ member: Member; ranking: LogRanking }[]> {
     const members = await this.listMembers();
-    const rows = await Promise.all(members.map(async (member) => ({ member, ranking: await this.getLogRanking(member.id) })));
+    // Supabase's pooled PostgreSQL connection is not safe to fan out into dozens
+    // of concurrent ranking queries. Run the small team list sequentially.
+    const rows: { member: Member; ranking: LogRanking }[] = [];
+    for (const member of members) {
+      rows.push({ member, ranking: await this.getLogRanking(member.id) });
+    }
     return rows.sort((left, right) => left.ranking.rank - right.ranking.rank);
   }
 
