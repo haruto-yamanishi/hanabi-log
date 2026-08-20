@@ -32,7 +32,7 @@ export function MyScreen() {
       const [pages, contributionSummary] = await Promise.all([Promise.all(tabs.map(({ value }) => apiRequest<ReportPage>(
         `/api/reports?authorId=${encodeURIComponent(me.id)}&status=${value}&limit=50`,
         { signal },
-      ))), apiRequest<ContributionSummary>("/api/me/contributions", { signal })]);
+      ))), apiRequest<ContributionSummary>("/api/me/contributions", { signal }).catch(() => null)]);
       setUser(me);
       setReports({ draft: pages[0].reports, pending_approval: pages[1].reports, published: pages[2].reports, archived: pages[3].reports });
       setContributions(contributionSummary);

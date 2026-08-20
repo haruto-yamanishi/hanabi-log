@@ -39,6 +39,24 @@ function slackFailure(error: unknown): never {
   throw new AppError("SLACK_COMMENT_FAILED", "Slackのコメントを同期できませんでした", 502);
 }
 
+function recordCommentContributions(
+  reportId: string,
+  comments: import("@/lib/types").ReportComment[],
+): void {
+  const repository = getReportRepository();
+  void Promise.resolve(repository.recordContributionEvents(
+    comments.flatMap((comment) => comment.author.id ? [{
+      memberId: comment.author.id,
+      occurredAt: comment.createdAt,
+      kind: "comment" as const,
+      eventKey: `comment:${reportId}:${comment.source}:${comment.id}`,
+    }] : []),
+  )).catch((error: unknown) => {
+    // A contribution dashboard failure must never hide otherwise readable Slack comments.
+    console.error("Could not record comment contribution", { reportId, error });
+  });
+}
+
 export async function GET(_request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireCurrentUser();
@@ -59,14 +77,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
         ...binding,
         members: await repository.listMembers(),
       });
-      await repository.recordContributionEvents(
-        comments.flatMap((comment) => comment.author.id ? [{
-          memberId: comment.author.id,
-          occurredAt: comment.createdAt,
-          kind: "comment" as const,
-          eventKey: `comment:${id}:${comment.source}:${comment.id}`,
-        }] : []),
-      );
+      recordCommentContributions(id, comments);
       return Response.json(
         { available: true, comments },
         { headers: { "Cache-Control": "private, no-store" } },
@@ -95,12 +106,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
 
     try {
       const comment = await slackConfiguration().post({ ...binding, actor, body });
-      await repository.recordContributionEvents([{
-        memberId: actor.id,
-        occurredAt: comment.createdAt,
-        kind: "comment",
-        eventKey: `comment:${id}:web:${comment.id}`,
-      }]);
+      recordCommentContributions(id, [comment]);
       return Response.json(comment, {
         status: 201,
         headers: { "Cache-Control": "private, no-store" },
