@@ -11,6 +11,7 @@ import type {
   ReportFilters,
   ReportInput,
   ReportLiker,
+  LogRanking,
   ReportListItem,
   ReportPage,
 } from "@/lib/types";
@@ -400,8 +401,8 @@ export class PostgresReportRepository implements ReportRepository {
   async recordContributionEvents(events: ContributionEventInput[]): Promise<void> {
     for (const event of events) {
       await this.sql`
-        insert into member_contribution_events (member_id, occurred_at, kind, event_key)
-        values (${event.memberId}, ${event.occurredAt}::timestamptz, ${event.kind}, ${event.eventKey})
+        insert into member_contribution_events (member_id, report_id, occurred_at, kind, event_key)
+        values (${event.memberId}, ${event.reportId ?? null}, ${event.occurredAt}::timestamptz, ${event.kind}, ${event.eventKey})
         on conflict (event_key) do nothing
       `;
     }
@@ -418,6 +419,35 @@ export class PostgresReportRepository implements ReportRepository {
       order by 1
     `;
     return { total: rows.reduce((sum, row) => sum + row.count, 0), days: rows };
+  }
+
+  async getLogRanking(memberId: string): Promise<LogRanking> {
+    const stats = await this.sql<{
+      member_id: string; published_reports: number; likes_received: number; comments_received: number; comments_made: number;
+    }[]>`
+      select members.id::text as member_id,
+        (select count(*)::int from reports where author_id = members.id and published_at is not null) as published_reports,
+        (select count(*)::int from report_likes likes join reports on reports.id = likes.report_id where reports.author_id = members.id) as likes_received,
+        (select count(*)::int from member_contribution_events events join reports on reports.id = events.report_id where reports.author_id = members.id and events.kind = 'comment' and events.member_id <> members.id) as comments_received,
+        (select count(*)::int from member_contribution_events where member_id = members.id and kind = 'comment') as comments_made
+      from members
+    `;
+    const ranking = stats.map((row) => ({ ...row, score: row.published_reports + row.likes_received + row.comments_received + row.comments_made }))
+      .sort((left, right) => right.score - left.score || right.published_reports - left.published_reports || left.member_id.localeCompare(right.member_id));
+    const target = ranking.find((row) => row.member_id === memberId);
+    if (!target) return { rank: 0, memberCount: ranking.length, score: 0, publishedReports: 0, likesReceived: 0, commentsReceived: 0, commentsMade: 0, currentStreak: 0 };
+    const activityDays = await this.sql<{ date: string }[]>`
+      select distinct timezone('Asia/Tokyo', occurred_at)::date::text as date
+      from member_contribution_events where member_id = ${memberId} order by date desc
+    `;
+    const dates = new Set(activityDays.map((row) => row.date));
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const today = `${values.year}-${values.month}-${values.day}`;
+    let cursor = new Date(`${today}T00:00:00+09:00`);
+    let currentStreak = 0;
+    while (dates.has(cursor.toISOString().slice(0, 10))) { currentStreak += 1; cursor.setUTCDate(cursor.getUTCDate() - 1); }
+    return { rank: ranking.findIndex((row) => row.member_id === memberId) + 1, memberCount: ranking.length, score: target.score, publishedReports: target.published_reports, likesReceived: target.likes_received, commentsReceived: target.comments_received, commentsMade: target.comments_made, currentStreak };
   }
 
   async setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null> {
@@ -797,8 +827,8 @@ export class PostgresReportRepository implements ReportRepository {
         if (publishImmediately) {
           await enqueueJobs(tx, reportId, updated[0].version, "publish");
           await tx`
-            insert into member_contribution_events (member_id, occurred_at, kind, event_key)
-            values (${report.author_id}, now(), 'report', ${`report:${reportId}`})
+            insert into member_contribution_events (member_id, report_id, occurred_at, kind, event_key)
+            values (${report.author_id}, ${reportId}, now(), 'report', ${`report:${reportId}`})
             on conflict (event_key) do nothing
           `;
         }
@@ -832,8 +862,8 @@ export class PostgresReportRepository implements ReportRepository {
       `;
       await enqueueJobs(tx, reportId, updated[0].version, "publish");
       await tx`
-        insert into member_contribution_events (member_id, occurred_at, kind, event_key)
-        values (${report.author_id}, now(), 'report', ${`report:${reportId}`})
+        insert into member_contribution_events (member_id, report_id, occurred_at, kind, event_key)
+        values (${report.author_id}, ${reportId}, now(), 'report', ${`report:${reportId}`})
         on conflict (event_key) do nothing
       `;
     });

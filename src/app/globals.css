@@ -1122,6 +1122,15 @@ strong {
 .contribution-graph__day--1 { background: #d9eadf; }.contribution-graph__day--2 { background: #9dcbac; }.contribution-graph__day--3 { background: #55a86d; }.contribution-graph__day--4 { background: #176c39; }
 .contribution-graph p { margin-top: 12px; }
 
+.log-ranking { background: var(--navy); color: #fff; margin: 0 0 20px; padding: 20px; }
+.log-ranking .section-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: 18px; }
+.log-ranking .section-heading p { color: #e33e3b; font-size: 11px; font-weight: 800; letter-spacing: .12em; margin: 0 0 3px; }
+.log-ranking .section-heading h2 { font-size: 28px; margin: 0; }.log-ranking .section-heading h2 span { color: #aeb9c8; font-size: 13px; }
+.log-ranking .section-heading > strong { color: #eab548; font-size: 30px; }.log-ranking strong small, .log-ranking dd small { font-size: 11px; margin-left: 3px; }
+.log-ranking dl { display: grid; gap: 1px; grid-template-columns: repeat(5, 1fr); margin: 0; }.log-ranking dl > div { background: rgba(255,255,255,.08); padding: 12px; }.log-ranking dt { color: #aeb9c8; font-size: 10px; }.log-ranking dd { font-size: 20px; font-weight: 800; margin: 5px 0 0; }
+
+@media (max-width: 700px) { .log-ranking dl { grid-template-columns: repeat(2, 1fr); }.log-ranking dl > div:last-child { grid-column: 1 / -1; } }
+
 .tabs,
 .admin-tabs {
   border-bottom: 1px solid var(--line);

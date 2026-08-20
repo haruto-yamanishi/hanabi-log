@@ -1,6 +1,7 @@
 import type { DeliveryStatus, DeliveryTarget } from "@/lib/constants";
 import type {
   ContributionSummary,
+  LogRanking,
   CurrentUser,
   IntegrationBinding,
   Member,
@@ -17,6 +18,7 @@ export interface ContributionEventInput {
   occurredAt: string;
   kind: "report" | "comment";
   eventKey: string;
+  reportId?: string;
 }
 
 export interface MemberUpsertInput {
@@ -101,6 +103,7 @@ export interface ReportRepository extends OutboxRepository {
   deleteMember(memberId: string): Promise<DeleteMemberResult>;
   recordContributionEvents(events: ContributionEventInput[]): Promise<void>;
   getContributionSummary(memberId: string, from: Date, to: Date): Promise<ContributionSummary>;
+  getLogRanking(memberId: string): Promise<LogRanking>;
   listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage>;
   getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null>;
   setReportLike(

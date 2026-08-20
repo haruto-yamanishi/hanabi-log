@@ -13,6 +13,7 @@ import type {
   ReportLikeSummary,
   ReportListItem,
   ContributionSummary,
+  LogRanking,
   ReportPage,
 } from "@/lib/types";
 import { canEditReport, canReadReport } from "@/lib/authorization";
@@ -394,6 +395,15 @@ export class MemoryReportRepository implements ReportRepository {
     }
     const result = [...days].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
     return { total: result.reduce((total, day) => total + day.count, 0), days: result };
+  }
+
+  async getLogRanking(memberId: string): Promise<LogRanking> {
+    const publishedReports = [...state().reports.values()].filter((report) => report.authorId === memberId && report.publishedAt).length;
+    const likesReceived = [...state().reports.values()].filter((report) => report.authorId === memberId).reduce((total, report) => total + (state().likes.get(report.id)?.size ?? 0), 0);
+    const commentsMade = [...state().contributions.values()].filter((event) => event.memberId === memberId && event.kind === "comment").length;
+    const score = publishedReports + likesReceived + commentsMade;
+    const scores = [...state().members.keys()].map((id) => ({ id, score: [...state().reports.values()].filter((report) => report.authorId === id && report.publishedAt).length + [...state().contributions.values()].filter((event) => event.memberId === id && event.kind === "comment").length })).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+    return { rank: scores.findIndex((item) => item.id === memberId) + 1, memberCount: scores.length, score, publishedReports, likesReceived, commentsReceived: 0, commentsMade, currentStreak: 0 };
   }
 
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {

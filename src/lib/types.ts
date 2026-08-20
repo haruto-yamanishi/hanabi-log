@@ -206,6 +206,17 @@ export interface ContributionSummary {
   days: ContributionDay[];
 }
 
+export interface LogRanking {
+  rank: number;
+  memberCount: number;
+  score: number;
+  publishedReports: number;
+  likesReceived: number;
+  commentsReceived: number;
+  commentsMade: number;
+  currentStreak: number;
+}
+
 export interface OutboxJob {
   id: string;
   reportId: string;

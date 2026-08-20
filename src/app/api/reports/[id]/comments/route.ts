@@ -50,6 +50,7 @@ function recordCommentContributions(
       occurredAt: comment.createdAt,
       kind: "comment" as const,
       eventKey: `comment:${reportId}:${comment.source}:${comment.id}`,
+      reportId,
     }] : []),
   )).catch((error: unknown) => {
     // A contribution dashboard failure must never hide otherwise readable Slack comments.
