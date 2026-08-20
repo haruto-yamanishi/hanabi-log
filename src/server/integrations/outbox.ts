@@ -12,7 +12,6 @@ import type {
   NotionReportIntegration,
   NotionSyncResult,
 } from "@/server/integrations/notion";
-import { createNotionIntegration } from "@/server/integrations/notion";
 import type {
   SlackReportIntegration,
   SlackSyncResult,
@@ -535,17 +534,21 @@ async function getRuntimeProcessor(): Promise<OutboxProcessor | undefined> {
     const appBaseUrl = process.env.APP_BASE_URL;
     const slackToken = process.env.SLACK_BOT_TOKEN;
     const slackChannelId = process.env.SLACK_CHANNEL_ID;
-    const notionToken = process.env.NOTION_ACCESS_TOKEN;
-    if (!appBaseUrl || !slackToken || !slackChannelId || !notionToken) {
+    if (!appBaseUrl || !slackToken || !slackChannelId) {
       return undefined;
     }
 
     // Keep the repository import lazy so pure integration tests do not load the
     // Next.js `server-only` runtime module.
-    const [{ getOutboxRepository }, { createNotionFileDependencies }] =
+    const [
+      { getOutboxRepository },
+      { createNotionFileDependencies },
+      { createOAuthNotionIntegration },
+    ] =
       await Promise.all([
         import("@/server/repositories"),
         import("@/server/integrations/notion-files"),
+        import("@/server/integrations/notion-oauth"),
       ]);
     return createOutboxProcessor({
       repository: getOutboxRepository(),
@@ -554,8 +557,7 @@ async function getRuntimeProcessor(): Promise<OutboxProcessor | undefined> {
         channelId: slackChannelId,
         appBaseUrl,
       }),
-      notion: createNotionIntegration({
-        token: notionToken,
+      notion: createOAuthNotionIntegration({
         appBaseUrl,
         notionVersion: process.env.NOTION_API_VERSION,
         dataSourceId: process.env.NOTION_DATA_SOURCE_ID,

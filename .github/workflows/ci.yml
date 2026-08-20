@@ -23,9 +23,11 @@ jobs:
       SLACK_CHANNEL_ID: C_CI
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
       SUPABASE_URL: https://example.supabase.co
-      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-placeholder
+      SUPABASE_SECRET_KEY: sb_secret_ci_placeholder
       SUPABASE_STORAGE_BUCKET: hanabi-log-private
-      NOTION_ACCESS_TOKEN: secret_ci_placeholder
+      NOTION_OAUTH_CLIENT_ID: ci-notion-client
+      NOTION_OAUTH_CLIENT_SECRET: ci-notion-secret
+      NOTION_TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       NOTION_API_VERSION: 2026-03-11
       NOTION_DATABASE_ID: 212fffe9-1997-4b7c-a631-13629baa8977
       NOTION_DATA_SOURCE_ID: aff207bb-2f47-4f19-beba-ae9556bdf442

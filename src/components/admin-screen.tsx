@@ -20,6 +20,30 @@ interface SyncIssue {
   error?: string | null;
 }
 
+interface NotionConnectionStatus {
+  connected: boolean;
+  available?: boolean;
+  workspaceId?: string;
+  workspaceName?: string | null;
+  ownerUserName?: string | null;
+  connectedAt?: string;
+  updatedAt?: string;
+}
+
+function initialNotionNotice(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("notion");
+  if (result === "connected") return "Notionワークスペースを接続しました。";
+  if (result === "cancelled") return "Notion接続はキャンセルされました。";
+  if (result === "error") {
+    return params.get("reason") === "NOTION_DATABASE_NOT_SHARED"
+      ? "Notionの許可画面で「HANABI LOG｜日報アーカイブ」を選択してください。"
+      : "Notionを接続できませんでした。設定を確認して再度お試しください。";
+  }
+  return null;
+}
+
 async function loadAllReports(status: ReportStatus, signal?: AbortSignal): Promise<Report[]> {
   const reports: Report[] = [];
   const seenCursors = new Set<string>();
@@ -40,26 +64,29 @@ export function AdminScreen() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [members, setMembers] = useState<PublicMember[]>([]);
+  const [notionConnection, setNotionConnection] = useState<NotionConnectionStatus>({ connected: false });
   const [tab, setTab] = useState<AdminTab>("sync");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotionNotice);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      const [me, loadedMembers, published, archived] = await Promise.all([
+      const [me, loadedMembers, published, archived, loadedNotionConnection] = await Promise.all([
         apiRequest<CurrentUser>("/api/me", { signal }),
         apiRequest<PublicMember[]>("/api/members", { signal }),
         loadAllReports("published", signal),
         loadAllReports("archived", signal),
+        apiRequest<NotionConnectionStatus>("/api/integrations/notion", { signal }),
       ]);
       setUser(me);
       setMembers(loadedMembers);
       setReports([...published, ...archived]);
+      setNotionConnection(loadedNotionConnection);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "管理情報を読み込めませんでした");
@@ -76,6 +103,15 @@ export function AdminScreen() {
       controller.abort();
     };
   }, [load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("notion")) return;
+    params.delete("notion");
+    params.delete("reason");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
 
   const issues = useMemo<SyncIssue[]>(() => reports.flatMap((report) => {
     if (!report.integration) return [];
@@ -123,6 +159,18 @@ export function AdminScreen() {
     }
   }
 
+  async function disconnectNotion() {
+    if (!window.confirm("Notionとの接続を解除しますか？ 日報データは削除されません。")) return;
+    setNotice(null);
+    try {
+      await apiRequest<Record<string, never>>("/api/integrations/notion", { method: "DELETE" });
+      setNotionConnection({ connected: false, available: true });
+      setNotice("Notionとの接続を解除しました。");
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Notion接続を解除できませんでした");
+    }
+  }
+
   if (!loading && user && user.role !== "admin") {
     return (
       <div className="page">
@@ -153,6 +201,28 @@ export function AdminScreen() {
 
           {tab === "sync" ? (
             <section aria-labelledby="sync-heading" className="admin-panel">
+              <div className="integration-connection-card">
+                <span className="integration-logo integration-logo--notion">N</span>
+                <div className="integration-connection-card__copy">
+                  <div><strong>Notion</strong>{notionConnection.connected ? <span className="sync-pill sync-pill--success"><CheckIcon />接続済み</span> : <span className="sync-pill sync-pill--warning">未接続</span>}</div>
+                  <p>
+                    {notionConnection.connected
+                      ? `${notionConnection.workspaceName || "Notionワークスペース"}へ日報を同期します。`
+                      : notionConnection.available === false
+                        ? "実運用モードへ切り替えた後にOAuth接続できます。"
+                        : "OAuthで日報アーカイブへのアクセスを許可してください。"}
+                  </p>
+                  {notionConnection.connectedAt ? <small>接続 {formatDateTime(notionConnection.connectedAt)}</small> : null}
+                </div>
+                {notionConnection.available === false ? null : (
+                  <div className="integration-connection-card__actions">
+                    <a className="button button--secondary button--small" href="/api/integrations/notion/connect">
+                      {notionConnection.connected ? "再接続" : "Notionを接続"}
+                    </a>
+                    {notionConnection.connected ? <button className="button button--ghost button--small" onClick={() => void disconnectNotion()} type="button">解除</button> : null}
+                  </div>
+                )}
+              </div>
               <div className="admin-panel__heading"><div><h2 id="sync-heading">失敗した同期</h2><p>日報は公開されたままです。外部サービスへの配信だけを再試行します。</p></div></div>
               {issues.length ? (
                 <div className="sync-list">

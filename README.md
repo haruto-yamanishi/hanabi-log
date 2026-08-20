@@ -43,8 +43,9 @@ npm run dev
 2. SQL Editorで `supabase/migrations/202608190001_hanabi_log.sql` を実行します。
 3. 続けて `supabase/migrations/202608190002_private_storage.sql` を実行します。このmigrationがPrivate bucket `hanabi-log-private` を作成し、5 MiBの上限と許可する画像形式を設定します。
 4. `supabase/migrations/202608190003_notion_file_upload_state.sql` を実行します。Notion画像同期の再試行に使うFile Upload IDを添付へ保持します。
-5. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
-6. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
+5. `supabase/migrations/202608200004_notion_oauth_connections.sql` を実行します。Notion OAuthトークンの暗号化保存先を作成します。
+6. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
+7. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
 
 DBとStorageへのアクセスはサーバー側だけに限定します。Secret keyを `NEXT_PUBLIC_` 変数へ設定しないでください。
 
@@ -70,15 +71,16 @@ Slack Appで、ログイン用OIDCとBot配信を分けて設定します。
 
 ## Notionセットアップ
 
-Notion connectionへ対象databaseを共有し、環境変数を設定してからschemaを確認します。
+Notion Developer PortalでOAuth connectionを作成します。内部connectionを作成できないMemberでも、OAuthの許可画面から自分が編集できるdatabaseを選択できます。
 
-```bash
-npm run notion:check
-npm run notion:migrate
-npm run notion:check
-```
+1. 認証方法をOAuth、インストール範囲を対象workspaceに限定してconnectionを作成します。
+2. Redirect URIに `${APP_BASE_URL}/api/integrations/notion/callback` を設定します。
+3. Content capabilityはRead / Insert / Updateを有効にします。
+4. Client IDとClient Secretを `NOTION_OAUTH_CLIENT_ID`、`NOTION_OAUTH_CLIENT_SECRET` に設定します。
+5. 32 byteのランダム値をbase64化し、`NOTION_TOKEN_ENCRYPTION_KEY` に設定します。この値を変更すると保存済みtokenを復号できなくなるため、secret managerで保持します。
+6. 実運用へ切り替えてSlackログイン後、Adminの同期管理から「Notionを接続」を押し、`HANABI LOG｜日報アーカイブ` を選択します。
 
-`notion:migrate` が追加するのは不足している `Report UUID` と `アプリURL` だけです。既存propertyの削除やrenameは行いません。
+OAuth callbackは対象databaseのschemaを検証し、不足している `Report UUID` と `アプリURL` だけを追加します。既存propertyの削除やrenameは行いません。Access tokenとRefresh tokenはAES-256-GCMで暗号化してSupabaseへ保存し、Admin以外には返しません。
 
 ## 品質確認
 

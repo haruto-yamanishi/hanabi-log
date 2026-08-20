@@ -24,7 +24,9 @@ const schema = z.object({
   SUPABASE_URL: optional,
   SUPABASE_SECRET_KEY: optional,
   SUPABASE_STORAGE_BUCKET: z.string().default("hanabi-log-private"),
-  NOTION_ACCESS_TOKEN: optional,
+  NOTION_OAUTH_CLIENT_ID: optional,
+  NOTION_OAUTH_CLIENT_SECRET: optional,
+  NOTION_TOKEN_ENCRYPTION_KEY: optional,
   NOTION_API_VERSION: z.string().default("2026-03-11"),
   NOTION_DATABASE_ID: z.string().default("212fffe9-1997-4b7c-a631-13629baa8977"),
   NOTION_DATA_SOURCE_ID: z.string().default("aff207bb-2f47-4f19-beba-ae9556bdf442"),
@@ -51,7 +53,9 @@ export function assertProductionEnv(): void {
     "DATABASE_URL",
     "SUPABASE_URL",
     "SUPABASE_SECRET_KEY",
-    "NOTION_ACCESS_TOKEN",
+    "NOTION_OAUTH_CLIENT_ID",
+    "NOTION_OAUTH_CLIENT_SECRET",
+    "NOTION_TOKEN_ENCRYPTION_KEY",
     "CRON_SECRET",
   ] as const;
   const missing = required.filter((key) => !env[key]);
