@@ -79,3 +79,35 @@ describe("MemoryReportRepository report deletion", () => {
     await expect(repository.getReport(created.id)).resolves.toBeNull();
   });
 });
+
+describe("MemoryReportRepository report likes", () => {
+  it("stores one like per member and returns the viewer state", async () => {
+    const repository = new MemoryReportRepository();
+    const actor = getDemoMember();
+    const created = await repository.createDraft(actor, {
+      reportDate: "2026-08-20",
+      title: "いいねテスト",
+      activityArea: "ロボット",
+      contentCategory: "進捗",
+      activityText: "いいねの保存を確認した。",
+    });
+    const published = await repository.publishReport(created.id, actor);
+
+    await expect(repository.setReportLike(published.id, actor, true)).resolves.toEqual({
+      likeCount: 1,
+      liked: true,
+    });
+    await expect(repository.setReportLike(published.id, actor, true)).resolves.toEqual({
+      likeCount: 1,
+      liked: true,
+    });
+    await expect(repository.getReadableReport(published.id, actor)).resolves.toMatchObject({
+      likeCount: 1,
+      likedByCurrentUser: true,
+    });
+    await expect(repository.setReportLike(published.id, actor, false)).resolves.toEqual({
+      likeCount: 0,
+      liked: false,
+    });
+  });
+});

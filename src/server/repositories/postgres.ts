@@ -41,6 +41,8 @@ import type {
   RetryJobInput,
   SaveNotionBindingInput,
   SaveSlackBindingInput,
+  WeeklyBestInput,
+  WeeklyDigestDeliveryInput,
 } from "@/server/repositories/types";
 
 type Transaction = postgres.TransactionSql<Record<string, never>>;
@@ -54,6 +56,12 @@ interface LockedReportRow {
 
 interface IdempotencyRow {
   response_body: { reportId?: unknown };
+}
+
+interface LikeSummaryRow {
+  report_id: string;
+  like_count: number;
+  liked_by_current_user: boolean;
 }
 
 function reportColumns(sql: ReturnType<typeof getDatabase>) {
@@ -187,10 +195,10 @@ async function storeIdempotency(
 export class PostgresReportRepository implements ReportRepository {
   private readonly sql = getDatabase();
 
-  private async hydrate(rows: ReportRow[]): Promise<Report[]> {
+  private async hydrate(rows: ReportRow[], actorId?: string): Promise<Report[]> {
     if (!rows.length) return [];
     const ids = rows.map((row) => row.id);
-    const [linkRows, attachmentRows, bindingRows] = await Promise.all([
+    const [linkRows, attachmentRows, bindingRows, likeRows] = await Promise.all([
       this.sql<RelatedLinkRow[]>`
         select id, report_id, label, url, sort_order
         from related_links
@@ -210,6 +218,15 @@ export class PostgresReportRepository implements ReportRepository {
         from integration_bindings
         where report_id in ${this.sql(ids)}
       `,
+      this.sql<LikeSummaryRow[]>`
+        select
+          report_id::text as report_id,
+          count(*)::int as like_count,
+          coalesce(bool_or(member_id = ${actorId ?? null}), false) as liked_by_current_user
+        from report_likes
+        where report_id in ${this.sql(ids)}
+        group by report_id
+      `,
     ]);
     const links = new Map<string, ReturnType<typeof mapRelatedLink>[]>();
     for (const row of linkRows) {
@@ -226,14 +243,19 @@ export class PostgresReportRepository implements ReportRepository {
     const bindings = new Map(
       bindingRows.map((row) => [row.report_id, mapIntegrationBinding(row)]),
     );
-    return rows.map((row) =>
-      mapReport(
+    const likes = new Map(likeRows.map((row) => [row.report_id, row]));
+    return rows.map((row) => {
+      const report = mapReport(
         row,
         links.get(row.id) ?? [],
         attachments.get(row.id) ?? [],
         bindings.get(row.id) ?? null,
-      ),
-    );
+      );
+      const like = likes.get(row.id);
+      report.likeCount = like?.like_count ?? 0;
+      report.likedByCurrentUser = like?.liked_by_current_user ?? false;
+      return report;
+    });
   }
 
   async upsertMember(input: MemberUpsertInput): Promise<Member> {
@@ -326,7 +348,7 @@ export class PostgresReportRepository implements ReportRepository {
     `;
     const hasMore = rows.length > limit;
     const pageRows = rows.slice(0, limit);
-    const reports = await this.hydrate(pageRows);
+    const reports = await this.hydrate(pageRows, actor.id);
     const last = reports.at(-1);
     return {
       reports,
@@ -345,8 +367,133 @@ export class PostgresReportRepository implements ReportRepository {
   }
 
   async getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null> {
-    const report = await this.getReport(reportId);
+    const rows = await this.sql<ReportRow[]>`
+      select ${reportColumns(this.sql)}
+      from reports r
+      join members m on m.id = r.author_id
+      where r.id = ${reportId}
+    `;
+    const report = (await this.hydrate(rows, actor.id))[0] ?? null;
     return report && canReadReport(actor, report) ? report : null;
+  }
+
+  async setReportLike(
+    reportId: string,
+    actor: CurrentUser,
+    liked: boolean,
+  ): Promise<{ likeCount: number; liked: boolean }> {
+    return this.sql.begin(async (rawTx) => {
+      const tx = rawTx as Transaction;
+      const rows = await tx<{ status: Report["status"] }[]>`
+        select status
+        from reports
+        where id = ${reportId}
+        for update
+      `;
+      if (!rows[0]) throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+      if (rows[0].status !== "published") {
+        throw new AppError("INVALID_STATE", "公開中の日報だけにいいねできます", 409);
+      }
+
+      if (liked) {
+        await tx`
+          insert into report_likes (report_id, member_id)
+          values (${reportId}, ${actor.id})
+          on conflict (report_id, member_id) do nothing
+        `;
+      } else {
+        await tx`
+          delete from report_likes
+          where report_id = ${reportId} and member_id = ${actor.id}
+        `;
+      }
+
+      const countRows = await tx<{ like_count: number }[]>`
+        select count(*)::int as like_count
+        from report_likes
+        where report_id = ${reportId}
+      `;
+      return { likeCount: countRows[0]?.like_count ?? 0, liked };
+    });
+  }
+
+  async listWeeklyBestReports(input: WeeklyBestInput): Promise<Report[]> {
+    const rows = await this.sql<ReportRow[]>`
+      select ${reportColumns(this.sql)}
+      from reports r
+      join members m on m.id = r.author_id
+      where r.id in (
+        select candidate.id
+        from reports candidate
+        left join report_likes likes on likes.report_id = candidate.id
+        where candidate.status = 'published'
+          and candidate.published_at >= ${input.periodStart}
+          and candidate.published_at < ${input.periodEnd}
+        group by candidate.id
+        order by count(likes.member_id) desc, candidate.published_at desc, candidate.id desc
+        limit ${input.limit}
+      )
+      order by
+        (select count(*) from report_likes ranked where ranked.report_id = r.id) desc,
+        r.published_at desc,
+        r.id desc
+    `;
+    return this.hydrate(rows);
+  }
+
+  async claimWeeklyDigest(
+    input: WeeklyDigestDeliveryInput,
+  ): Promise<"claimed" | "delivered" | "processing"> {
+    const claimed = await this.sql<{ status: string }[]>`
+      insert into weekly_digest_deliveries (
+        period_start, period_end, slack_channel_id, status, updated_at
+      ) values (
+        ${input.periodStart}, ${input.periodEnd}, ${input.channelId}, 'processing', now()
+      )
+      on conflict (period_start, slack_channel_id) do update set
+        period_end = excluded.period_end,
+        status = 'processing',
+        last_error = null,
+        updated_at = now()
+      where weekly_digest_deliveries.status = 'failed'
+         or (
+           weekly_digest_deliveries.status = 'processing'
+           and weekly_digest_deliveries.updated_at < now() - interval '15 minutes'
+         )
+      returning status
+    `;
+    if (claimed[0]) return "claimed";
+
+    const existing = await this.sql<{ status: "processing" | "delivered" }[]>`
+      select status
+      from weekly_digest_deliveries
+      where period_start = ${input.periodStart}
+        and slack_channel_id = ${input.channelId}
+    `;
+    return existing[0]?.status === "delivered" ? "delivered" : "processing";
+  }
+
+  async completeWeeklyDigest(
+    input: WeeklyDigestDeliveryInput & { messageTs: string },
+  ): Promise<void> {
+    await this.sql`
+      update weekly_digest_deliveries
+      set status = 'delivered', slack_message_ts = ${input.messageTs},
+          last_error = null, updated_at = now()
+      where period_start = ${input.periodStart}
+        and slack_channel_id = ${input.channelId}
+    `;
+  }
+
+  async failWeeklyDigest(
+    input: WeeklyDigestDeliveryInput & { errorCode: string },
+  ): Promise<void> {
+    await this.sql`
+      update weekly_digest_deliveries
+      set status = 'failed', last_error = ${input.errorCode.slice(0, 500)}, updated_at = now()
+      where period_start = ${input.periodStart}
+        and slack_channel_id = ${input.channelId}
+    `;
   }
 
   async createDraft(

@@ -317,6 +317,25 @@ strong {
   color: var(--danger);
 }
 
+.report-like { align-items: flex-start; display: flex; flex-direction: column; gap: 5px; }
+.report-like__button {
+  align-items: center;
+  background: #fff;
+  border: 2px solid var(--hanabi);
+  color: var(--hanabi);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 46px;
+  padding: 9px 14px;
+}
+.report-like__button:hover:not(:disabled) { background: var(--hanabi-soft); }
+.report-like__button[aria-pressed="true"] { --heart-fill: 1; background: var(--hanabi); color: #fff; }
+.report-like__button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.report-like__button svg { height: 19px; width: 19px; }
+.report-like__button strong { border-left: 1px solid currentColor; line-height: 1; min-width: 20px; padding-left: 8px; }
+.report-like__error { color: var(--danger); font-size: 11px; }
+
 .button:disabled {
   box-shadow: none;
   opacity: 0.52;
@@ -919,6 +938,8 @@ strong {
 .report-card__author,
 .report-card__meta time { align-items: center; display: flex; gap: 7px; }
 .report-card__meta time svg { height: 15px; width: 15px; }
+.report-card__like-count { align-items: center; color: var(--hanabi); display: inline-flex; font-weight: 800; gap: 4px; }
+.report-card__like-count svg { --heart-fill: 1; height: 15px; width: 15px; }
 .report-card--skeleton { min-height: 190px; padding: 20px; }
 .report-card--skeleton:hover { transform: none; }
 .skeleton { animation: pulse 1.3s ease-in-out infinite; background: #ecebe8; border-radius: 5px; display: block; height: 12px; margin-bottom: 14px; }

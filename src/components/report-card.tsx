@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Report } from "@/lib/types";
-import { ArrowRightIcon, CalendarIcon } from "@/components/icons";
+import { ArrowRightIcon, CalendarIcon, HeartIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
 import { activityAreaClassName } from "@/lib/constants";
 
@@ -65,6 +65,10 @@ export function ReportCard({ report, showStatus = false }: { report: Report; sho
             <CalendarIcon />
             {formatReportDate(report.reportDate)}
           </time>
+          <span className="report-card__like-count" title={`${report.likeCount ?? 0}件のいいね`}>
+            <HeartIcon />
+            {report.likeCount ?? 0}
+          </span>
         </footer>
       </Link>
     </article>

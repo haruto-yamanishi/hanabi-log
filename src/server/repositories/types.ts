@@ -7,6 +7,7 @@ import type {
   Report,
   ReportFilters,
   ReportInput,
+  ReportLikeSummary,
   ReportPage,
 } from "@/lib/types";
 
@@ -57,6 +58,18 @@ export interface EnqueueIntegrationRetryInput {
   errorCode: string;
 }
 
+export interface WeeklyBestInput {
+  periodStart: Date;
+  periodEnd: Date;
+  limit: number;
+}
+
+export interface WeeklyDigestDeliveryInput {
+  periodStart: string;
+  periodEnd: string;
+  channelId: string;
+}
+
 export interface OutboxRepository {
   claimJobs(options: ClaimJobsOptions): Promise<OutboxJob[]>;
   getReport(reportId: string): Promise<Report | null>;
@@ -76,6 +89,15 @@ export interface ReportRepository extends OutboxRepository {
   setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null>;
   listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage>;
   getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null>;
+  setReportLike(
+    reportId: string,
+    actor: CurrentUser,
+    liked: boolean,
+  ): Promise<ReportLikeSummary>;
+  listWeeklyBestReports(input: WeeklyBestInput): Promise<Report[]>;
+  claimWeeklyDigest(input: WeeklyDigestDeliveryInput): Promise<"claimed" | "delivered" | "processing">;
+  completeWeeklyDigest(input: WeeklyDigestDeliveryInput & { messageTs: string }): Promise<void>;
+  failWeeklyDigest(input: WeeklyDigestDeliveryInput & { errorCode: string }): Promise<void>;
   createDraft(
     actor: CurrentUser,
     input: ReportInput,

@@ -78,6 +78,24 @@ test("タイトルが空欄なら投稿者名から自動生成して公開で�
   await expect(page.getByText(activity).first()).toBeVisible();
 });
 
+test("公開日報のいいねを切り替えられる", async ({ page }, testInfo) => {
+  const uniqueTitle = `E2E いいね ${testInfo.project.name} ${Date.now()}`;
+
+  await page.goto("/reports/new");
+  await page.getByLabel("タイトル任意").fill(uniqueTitle);
+  await page.getByLabel("活動領域必須").selectOption({ label: "ロボット" });
+  await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
+  await page.getByLabel("今日やったこと必須").fill("いいねの保存状態を確認した。");
+  await page.getByRole("button", { name: "公開する" }).click();
+  await expect(page).toHaveURL(/\/reports\/[^/?]+\?published=1$/, { timeout: navigationTimeout });
+
+  const likeButton = page.getByRole("button", { name: /^いいね/ });
+  await expect(likeButton).toHaveAttribute("aria-pressed", "false");
+  await likeButton.click();
+  await expect(likeButton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^いいね済み/ })).toBeVisible();
+});
+
 test("管理者が確認後に日報を完全削除できる", async ({ page }) => {
   const uniqueTitle = `E2E 完全削除テスト ${Date.now()}`;
 

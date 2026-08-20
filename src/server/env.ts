@@ -20,6 +20,7 @@ const schema = z.object({
   SLACK_TEAM_ID: optional,
   SLACK_BOT_TOKEN: optional,
   SLACK_CHANNEL_ID: optional,
+  SLACK_RANDOM_CHANNEL_ID: optional,
   DATABASE_URL: optional,
   SUPABASE_URL: optional,
   SUPABASE_SECRET_KEY: optional,

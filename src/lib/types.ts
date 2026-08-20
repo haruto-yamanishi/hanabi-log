@@ -95,6 +95,13 @@ export interface Report {
   relatedLinks: RelatedLink[];
   attachments: Attachment[];
   integration?: IntegrationBinding | null;
+  likeCount?: number;
+  likedByCurrentUser?: boolean;
+}
+
+export interface ReportLikeSummary {
+  likeCount: number;
+  liked: boolean;
 }
 
 export interface ReportInput {

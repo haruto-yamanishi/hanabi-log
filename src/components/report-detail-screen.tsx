@@ -9,6 +9,7 @@ import { apiRequest } from "@/components/api-client";
 import { ArchiveIcon, ArrowLeftIcon, CalendarIcon, CheckIcon, EditIcon, ExternalLinkIcon, LinkIcon, RefreshIcon, TrashIcon } from "@/components/icons";
 import { formatDateTime, formatReportDate, StatusBadge } from "@/components/report-card";
 import { SyncStatusPanel } from "@/components/sync-status";
+import { ReportLikeButton } from "@/components/report-like-button";
 import { Avatar, ErrorState, LoadingView } from "@/components/ui";
 import { activityAreaClassName } from "@/lib/constants";
 
@@ -159,7 +160,11 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
 
       {report.status === "published" ? (
         <aside className="conversation-card">
-          <div><h2>Slack</h2></div>
+          <ReportLikeButton
+            initialCount={report.likeCount ?? 0}
+            initialLiked={report.likedByCurrentUser ?? false}
+            reportId={report.id}
+          />
           <div>
             {slackUrl ? <a className="button button--slack" href={slackUrl} rel="noreferrer" target="_blank">Slackで話す<ExternalLinkIcon /></a> : <button className="button button--secondary" disabled type="button">Slackへ同期中</button>}
             {notionUrl ? <a className="button button--secondary" href={notionUrl} rel="noreferrer" target="_blank">Notionで開く<ExternalLinkIcon /></a> : null}

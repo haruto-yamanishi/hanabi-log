@@ -43,6 +43,14 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function HeartIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 20.2 4.3 12.8A5.2 5.2 0 0 1 11.7 5.5l.3.3.3-.3a5.2 5.2 0 0 1 7.4 7.3L12 20.2Z" fill="currentColor" fillOpacity="var(--heart-fill, 0)" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+    </IconBase>
+  );
+}
+
 export function UserIcon(props: IconProps) {
   return (
     <IconBase {...props}>

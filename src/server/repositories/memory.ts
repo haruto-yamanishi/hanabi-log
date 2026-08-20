@@ -28,11 +28,15 @@ import type {
   RetryJobInput,
   SaveNotionBindingInput,
   SaveSlackBindingInput,
+  WeeklyBestInput,
+  WeeklyDigestDeliveryInput,
 } from "@/server/repositories/types";
 
 interface MemoryState {
   members: Map<string, Member>;
   reports: Map<string, Report>;
+  likes: Map<string, Set<string>>;
+  weeklyDigests: Map<string, { status: "processing" | "delivered" | "failed"; updatedAt: string }>;
   jobs: Map<string, OutboxJob>;
   idempotency: Map<string, string>;
 }
@@ -148,6 +152,8 @@ function initialState(): MemoryState {
   return {
     members: new Map([[demoMember.id, demoMember]]),
     reports: new Map(samples.map((report) => [report.id, report])),
+    likes: new Map(),
+    weeklyDigests: new Map(),
     jobs: new Map(),
     idempotency: new Map(),
   };
@@ -164,6 +170,19 @@ function state(): MemoryState {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function reportWithLikes(report: Report, actorId?: string): Report {
+  const likes = state().likes.get(report.id) ?? new Set<string>();
+  return {
+    ...clone(report),
+    likeCount: likes.size,
+    likedByCurrentUser: actorId ? likes.has(actorId) : false,
+  };
+}
+
+function weeklyDigestKey(input: WeeklyDigestDeliveryInput): string {
+  return `${input.periodStart}:${input.channelId}`;
 }
 
 function buildLinks(input: ReportInput): RelatedLink[] {
@@ -341,7 +360,7 @@ export class MemoryReportRepository implements ReportRepository {
     const page = reports.slice(0, limit);
     const last = page.at(-1);
     return {
-      reports: clone(page),
+      reports: page.map((report) => reportWithLikes(report, actor.id)),
       nextCursor:
         reports.length > page.length && last
           ? encodeReportCursor(last.reportDate, last.id)
@@ -351,12 +370,82 @@ export class MemoryReportRepository implements ReportRepository {
 
   async getReport(reportId: string): Promise<Report | null> {
     const report = state().reports.get(reportId);
-    return report ? clone(report) : null;
+    return report ? reportWithLikes(report) : null;
   }
 
   async getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null> {
     const report = state().reports.get(reportId);
-    return report && canReadReport(actor, report) ? clone(report) : null;
+    return report && canReadReport(actor, report) ? reportWithLikes(report, actor.id) : null;
+  }
+
+  async setReportLike(
+    reportId: string,
+    actor: CurrentUser,
+    liked: boolean,
+  ): Promise<{ likeCount: number; liked: boolean }> {
+    const report = state().reports.get(reportId);
+    if (!report) throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+    if (report.status !== "published") {
+      throw new AppError("INVALID_STATE", "公開中の日報だけにいいねできます", 409);
+    }
+    const likes = state().likes.get(reportId) ?? new Set<string>();
+    if (liked) likes.add(actor.id);
+    else likes.delete(actor.id);
+    state().likes.set(reportId, likes);
+    return { likeCount: likes.size, liked };
+  }
+
+  async listWeeklyBestReports(input: WeeklyBestInput): Promise<Report[]> {
+    return [...state().reports.values()]
+      .filter(
+        (report) =>
+          report.status === "published" &&
+          Boolean(report.publishedAt) &&
+          report.publishedAt! >= input.periodStart.toISOString() &&
+          report.publishedAt! < input.periodEnd.toISOString(),
+      )
+      .sort(
+        (left, right) =>
+          (state().likes.get(right.id)?.size ?? 0) - (state().likes.get(left.id)?.size ?? 0) ||
+          (right.publishedAt ?? "").localeCompare(left.publishedAt ?? "") ||
+          right.id.localeCompare(left.id),
+      )
+      .slice(0, input.limit)
+      .map((report) => reportWithLikes(report));
+  }
+
+  async claimWeeklyDigest(
+    input: WeeklyDigestDeliveryInput,
+  ): Promise<"claimed" | "delivered" | "processing"> {
+    const key = weeklyDigestKey(input);
+    const existing = state().weeklyDigests.get(key);
+    if (existing?.status === "delivered") return "delivered";
+    if (
+      existing?.status === "processing" &&
+      Date.now() - new Date(existing.updatedAt).getTime() < 15 * 60_000
+    ) {
+      return "processing";
+    }
+    state().weeklyDigests.set(key, { status: "processing", updatedAt: nowIso() });
+    return "claimed";
+  }
+
+  async completeWeeklyDigest(
+    input: WeeklyDigestDeliveryInput & { messageTs: string },
+  ): Promise<void> {
+    state().weeklyDigests.set(weeklyDigestKey(input), {
+      status: "delivered",
+      updatedAt: nowIso(),
+    });
+  }
+
+  async failWeeklyDigest(
+    input: WeeklyDigestDeliveryInput & { errorCode: string },
+  ): Promise<void> {
+    state().weeklyDigests.set(weeklyDigestKey(input), {
+      status: "failed",
+      updatedAt: nowIso(),
+    });
   }
 
   async createDraft(
@@ -500,6 +589,7 @@ export class MemoryReportRepository implements ReportRepository {
       throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
     }
     state().reports.delete(reportId);
+    state().likes.delete(reportId);
     for (const [jobId, job] of state().jobs) {
       if (job.reportId === reportId) state().jobs.delete(jobId);
     }
