@@ -901,6 +901,7 @@ strong {
   box-shadow: var(--shadow-sm);
   min-width: 0;
   overflow: hidden;
+  position: relative;
   transition: border-color 170ms ease, box-shadow 170ms ease, transform 170ms ease;
 }
 
@@ -943,14 +944,41 @@ strong {
   font-size: 11px;
   gap: 12px;
   justify-content: space-between;
+  padding-right: 50px;
   padding-top: 12px;
 }
 
 .report-card__author,
 .report-card__meta time { align-items: center; display: flex; gap: 7px; }
 .report-card__meta time svg { height: 15px; width: 15px; }
-.report-card__like-count { align-items: center; color: var(--hanabi); display: inline-flex; font-weight: 800; gap: 4px; }
+.report-card__like-count,
+.report-card__like-button {
+  align-items: center;
+  bottom: 12px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 4px;
+  position: absolute;
+  right: 18px;
+  z-index: 2;
+}
+.report-card__like-count { color: var(--hanabi); }
 .report-card__like-count svg { --heart-fill: 1; height: 15px; width: 15px; }
+.report-card__like-button {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  color: var(--muted);
+  cursor: pointer;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+.report-card__like-button svg { height: 16px; width: 16px; }
+.report-card__like-button[aria-pressed="true"] { --heart-fill: 1; background: var(--danger-soft); border-color: #e7b7b1; color: var(--hanabi); }
+.report-card__like-button:hover:not(:disabled) { border-color: var(--hanabi); color: var(--hanabi); }
+.report-card__like-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--hanabi) 22%, transparent); outline-offset: 2px; }
+.report-card__like-button:disabled { cursor: wait; opacity: .65; }
 .report-card--skeleton { min-height: 190px; padding: 20px; }
 .report-card--skeleton:hover { transform: none; }
 .skeleton { animation: pulse 1.3s ease-in-out infinite; background: #ecebe8; border-radius: 5px; display: block; height: 12px; margin-bottom: 14px; }

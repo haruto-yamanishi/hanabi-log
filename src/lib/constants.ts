@@ -3,8 +3,8 @@ export const ACTIVITY_AREAS = [
   "アワード",
   "アウトリーチ",
   "ブランディング",
-  "チーム運営",
-  "資金調達・スポンサー",
+  "ファンドレイジング",
+  "事務局",
   "その他",
 ] as const;
 
@@ -15,8 +15,8 @@ const ACTIVITY_AREA_CLASS_NAMES: Record<ActivityArea, string> = {
   アワード: "activity-area--award",
   アウトリーチ: "activity-area--outreach",
   ブランディング: "activity-area--branding",
-  チーム運営: "activity-area--operations",
-  "資金調達・スポンサー": "activity-area--fundraising",
+  ファンドレイジング: "activity-area--fundraising",
+  事務局: "activity-area--operations",
   その他: "activity-area--other",
 };
 

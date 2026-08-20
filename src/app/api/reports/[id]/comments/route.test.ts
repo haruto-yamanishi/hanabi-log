@@ -47,7 +47,7 @@ const report: Report = {
   reportDate: "2026-08-20",
   title: "コメント同期",
   summary: "Slackと同期する",
-  activityArea: "チーム運営",
+  activityArea: "事務局",
   contentCategory: "進捗",
   activityText: "コメント同期を実装した。",
   learningText: "",

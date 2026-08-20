@@ -19,8 +19,8 @@ const outfit = Outfit({
 
 export const metadata: Metadata = {
   title: {
-    default: "HANABI LOG",
-    template: "%s | HANABI LOG",
+    default: "Hanabi Log",
+    template: "%s | Hanabi Log",
   },
   description: "FRC Team Hanabiの活動・判断・学びを残す部内日報システム",
   robots: {

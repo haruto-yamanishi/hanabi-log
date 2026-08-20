@@ -119,7 +119,7 @@ export function renderWeeklyDigest(
   const blocks: Record<string, unknown>[] = [
     {
       type: "header",
-      text: { type: "plain_text", text: "🏅 今週のHANABI LOG", emoji: true },
+      text: { type: "plain_text", text: "🏅 今週のHanabi Log", emoji: true },
     },
     {
       type: "context",
@@ -164,7 +164,7 @@ export function renderWeeklyDigest(
   }
 
   return {
-    text: `今週のHANABI LOG: ${highlights.bestPost.title}`,
+    text: `今週のHanabi Log: ${highlights.bestPost.title}`,
     blocks,
   };
 }

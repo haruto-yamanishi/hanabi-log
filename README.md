@@ -1,4 +1,4 @@
-# HANABI LOG
+# Hanabi Log
 
 FRC Team Hanabiの部内日報を、書きやすく・探しやすく・引き継ぎやすくするWebアプリです。Webアプリを運用データの正本にし、公開した日報の見出しをSlackへ、構造化した本文をNotionへ同期します。
 
@@ -47,8 +47,9 @@ npm run dev
 6. `supabase/migrations/202608200005_report_likes_and_weekly_digest.sql` を実行します。いいねと週間ベスト配信の保存先を作成します。
 7. `supabase/migrations/202608200006_member_activity_and_report_approval.sql` を実行します。Active / Inactiveメンバーと公開承認待ちを追加します。
 8. `supabase/migrations/202608200007_report_approval_index.sql` を実行します。承認待ち一覧用のindexを追加します。
-9. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
-10. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
+9. `supabase/migrations/202608200008_rename_activity_areas.sql` を実行します。活動領域を現在のチーム名称へ移行します。
+10. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
+11. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
 
 DBとStorageへのアクセスはサーバー側だけに限定します。Secret keyを `NEXT_PUBLIC_` 変数へ設定しないでください。
 

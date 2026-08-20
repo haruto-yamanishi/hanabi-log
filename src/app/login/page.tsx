@@ -18,12 +18,12 @@ export default async function LoginPage({
   if (user) redirect(callbackUrl as Route);
   return (
     <main className="login-page">
-      <section className="login-story" aria-label="HANABI LOGについて">
+      <section className="login-story" aria-label="Hanabi Logについて">
         <div aria-hidden="true" className="login-firework login-firework--one" />
         <div aria-hidden="true" className="login-firework login-firework--two" />
         <div className="login-story__content">
           <HanabiLogo className="login-wordmark" inverse />
-          <h1>HANABI LOG</h1>
+          <h1>Hanabi Log</h1>
           <p>FRC Team Hanabi 部内日報</p>
         </div>
       </section>

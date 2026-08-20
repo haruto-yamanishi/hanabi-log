@@ -56,7 +56,7 @@ export function HomeScreen() {
       <header className="home-hero">
         <div>
           <p className="home-hero__date"><CalendarIcon />{dateLabel}</p>
-          <h1>HANABI LOG</h1>
+          <h1>Hanabi Log</h1>
         </div>
         <Link className="button button--primary home-hero__action" href="/reports/new">
           <PlusIcon />

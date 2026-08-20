@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export function HanabiMark({ compact = false }: { compact?: boolean }) {
   return (
-    <Link aria-label="Hanabi 日報ホーム" className={`brand${compact ? " brand--compact" : ""}`} href="/">
+    <Link aria-label="Hanabi Log ホーム" className={`brand${compact ? " brand--compact" : ""}`} href="/">
       <HanabiLogo decorative />
     </Link>
   );

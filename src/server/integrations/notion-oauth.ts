@@ -136,7 +136,7 @@ async function validateAndMigrateNotionSchema(
   ) {
     throw new AppError(
       "NOTION_DATABASE_MISMATCH",
-      "選択されたNotionデータベースがHANABI LOG用ではありません",
+      "選択されたNotionデータベースがHanabi Log用ではありません",
       422,
     );
   }

@@ -3,6 +3,19 @@ import { expect, test } from "@playwright/test";
 test.setTimeout(150_000);
 const navigationTimeout = 90_000;
 
+function publicationLabel(value: string): string {
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.month}月${values.day}日 ${values.hour}時${values.minute}分`;
+}
+
 test("PCサイドバーを折りたたみ、状態を保存できる", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "PC用サイドバーの確認");
 
@@ -97,6 +110,74 @@ test("公開日報のいいねを切り替えられる", async ({ page }, testIn
   await expect(
     page.getByRole("list", { name: "いいねしたメンバー" }).getByText("HANABI Demo"),
   ).toBeVisible();
+});
+
+test("一覧で投稿時刻を確認し、その場でいいねを切り替えられる", async ({ page }, testInfo) => {
+  const uniqueTitle = `E2E 一覧いいね ${testInfo.project.name} ${Date.now()}`;
+
+  await page.goto("/reports/new");
+  await expect(page.getByLabel("活動領域必須").locator("option")).toHaveText([
+    "選択してください",
+    "ロボット",
+    "アワード",
+    "アウトリーチ",
+    "ブランディング",
+    "ファンドレイジング",
+    "事務局",
+    "その他",
+  ]);
+  await page.getByLabel("タイトル任意").fill(uniqueTitle);
+  await page.getByLabel("活動領域必須").selectOption({ label: "事務局" });
+  await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
+  await page.getByLabel("今日やったこと必須").fill("一覧画面の投稿時刻といいね操作を確認した。");
+  await page.getByRole("button", { name: "公開する" }).click();
+  await expect(page).toHaveURL(/\/reports\/[^/?]+\?published=1$/, { timeout: navigationTimeout });
+
+  const reportId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const reportResponse = await page.request.get(`/api/reports/${reportId}`);
+  expect(reportResponse.ok()).toBe(true);
+  const report = await reportResponse.json() as { publishedAt: string };
+
+  await page.goto("/");
+  let card = page.locator("article.report-card").filter({
+    has: page.getByRole("heading", { name: uniqueTitle }),
+  });
+  await expect(card).toBeVisible();
+  await expect(card.getByText(publicationLabel(report.publishedAt), { exact: true })).toBeVisible();
+
+  const listLikeButton = card.locator(".report-card__like-button");
+  await expect(listLikeButton).toHaveAttribute("aria-pressed", "false");
+  await listLikeButton.click();
+  await expect(listLikeButton).toHaveAttribute("aria-pressed", "true");
+  await expect(listLikeButton).toContainText("1");
+
+  await card.getByRole("link", { name: `${uniqueTitle}を読む` }).click();
+  const detailLikeButton = page.getByRole("button", { name: /^いいね済み/ });
+  await expect(detailLikeButton).toHaveAttribute("aria-pressed", "true");
+  await detailLikeButton.click();
+  await expect(page.getByRole("button", { name: /^いいね/ })).toHaveAttribute("aria-pressed", "false");
+
+  await page.goto("/archive");
+  await page.getByLabel("キーワード").fill(uniqueTitle);
+  await page.getByRole("button", { name: "この条件で検索" }).click();
+  const archiveCard = page.locator("article.report-card").filter({
+    has: page.getByRole("heading", { name: uniqueTitle }),
+  });
+  const archiveLikeButton = archiveCard.locator(".report-card__like-button");
+  await expect(archiveLikeButton).toHaveAttribute("aria-pressed", "false");
+  await archiveLikeButton.click();
+  await expect(archiveLikeButton).toHaveAttribute("aria-pressed", "true");
+  await archiveCard.getByRole("link", { name: `${uniqueTitle}を読む` }).click();
+  await expect(page.getByRole("button", { name: /^いいね済み/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /^いいね済み/ }).click();
+  await expect(page.getByRole("button", { name: /^いいね/ })).toHaveAttribute("aria-pressed", "false");
+
+  await page.goto("/");
+  card = page.locator("article.report-card").filter({
+    has: page.getByRole("heading", { name: uniqueTitle }),
+  });
+  await expect(card.locator(".report-card__like-button")).toHaveAttribute("aria-pressed", "false");
+  await expect(card.locator(".report-card__like-button")).toContainText("0");
 });
 
 test("管理者が確認後に日報を完全削除できる", async ({ page }) => {
