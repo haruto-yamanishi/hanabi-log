@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: セキュリティ上の問題
+    url: https://github.com/haruto-yamanishi/hanabi-log/security
+    about: 脆弱性の詳細は公開Issueに書かず、SECURITY.mdを確認してください。
