@@ -1,0 +1,45 @@
+{
+  "name": "hanabi-log",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "notion:check": "tsx scripts/notion-check.ts",
+    "notion:migrate": "tsx scripts/notion-migrate.ts"
+  },
+  "dependencies": {
+    "@notionhq/client": "5.25.2",
+    "@slack/web-api": "8.0.0",
+    "@supabase/supabase-js": "2.112.3",
+    "next": "16.3.1",
+    "next-auth": "4.24.15",
+    "postgres": "3.4.9",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.1",
+    "tsx": "4.23.12",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

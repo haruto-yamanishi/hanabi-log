@@ -1,0 +1,1 @@
+-- Add real members through Slack sign-in. This file intentionally contains no personal data.
