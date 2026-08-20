@@ -48,6 +48,7 @@ function api(): NotionApiPort {
       id: pageId,
       url: `https://notion.test/${pageId}`,
     })),
+    trashPage: vi.fn(async () => undefined),
     replacePageMarkdown: vi.fn(async () => undefined),
     uploadFile: vi.fn(async () => "upload-1"),
     appendImages: vi.fn(async () => undefined),
@@ -108,6 +109,21 @@ describe("Notion rendering", () => {
 });
 
 describe("NotionReportService", () => {
+  it("moves the bound page to Notion trash", async () => {
+    const client = api();
+    const service = new NotionReportService(client, "https://log.example.test");
+
+    await service.remove({
+      reportId: "report-1",
+      notionPageId: "page-1",
+      notionStatus: "delivered",
+      slackStatus: "pending",
+      updatedAt: "2026-08-19T00:00:00.000Z",
+    });
+
+    expect(client.trashPage).toHaveBeenCalledWith("page-1");
+  });
+
   it("recovers by Report UUID before creating a page", async () => {
     const client = api();
     vi.mocked(client.findPagesByReportId).mockResolvedValue([

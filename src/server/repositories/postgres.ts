@@ -507,6 +507,26 @@ export class PostgresReportRepository implements ReportRepository {
     return (await this.getReport(reportId))!;
   }
 
+  async deleteReport(reportId: string, actor: CurrentUser): Promise<void> {
+    if (actor.role !== "admin") {
+      throw new AppError("FORBIDDEN", "管理者権限が必要です", 403);
+    }
+    await this.sql.begin(async (rawTx) => {
+      const tx = rawTx as Transaction;
+      const reports = await tx<{ id: string }[]>`
+        select id from reports where id = ${reportId} for update
+      `;
+      if (!reports[0]) {
+        throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+      }
+      await tx`
+        delete from idempotency_keys
+        where response_body ->> 'reportId' = ${reportId}
+      `;
+      await tx`delete from reports where id = ${reportId}`;
+    });
+  }
+
   async requestIntegrationRetry(
     reportId: string,
     target: DeliveryTarget,

@@ -314,6 +314,10 @@ export function createOAuthNotionIntegration(input: {
     ): Promise<void> {
       return run((service) => service.refreshProperties(report, binding, pageId));
     },
+    remove(binding: IntegrationBinding | null): Promise<void> {
+      if (!binding?.notionPageId) return Promise.resolve();
+      return run((service) => service.remove(binding));
+    },
   };
 }
 

@@ -52,6 +52,7 @@ export interface NotionApiPort {
   ): Promise<NotionPageReference[]>;
   createPage(input: NotionCreatePageInput): Promise<NotionPageReference>;
   updatePage(input: NotionUpdatePageInput): Promise<NotionPageReference>;
+  trashPage(pageId: string): Promise<void>;
   replacePageMarkdown(pageId: string, markdown: string): Promise<void>;
   uploadFile(input: NotionFileUploadInput): Promise<string>;
   appendImages(pageId: string, images: NotionImageReference[]): Promise<void>;
@@ -99,6 +100,7 @@ export interface NotionReportIntegration {
     binding: IntegrationBinding,
     pageId: string,
   ): Promise<void>;
+  remove(binding: IntegrationBinding | null): Promise<void>;
 }
 
 const STATUS_LABEL: Record<Report["status"], string> = {
@@ -301,6 +303,11 @@ export class NotionReportService implements NotionReportIntegration {
     });
   }
 
+  async remove(binding: IntegrationBinding | null): Promise<void> {
+    if (!binding?.notionPageId) return;
+    await this.api.trashPage(binding.notionPageId);
+  }
+
   private async updateExisting(
     pageId: string,
     properties: NotionPageProperties,
@@ -458,6 +465,15 @@ export class NotionSdkAdapter implements NotionApiPort {
       });
     }
     return page;
+  }
+
+  async trashPage(pageId: string): Promise<void> {
+    await this.request(() =>
+      this.client.pages.update({
+        page_id: pageId,
+        in_trash: true,
+      }),
+    );
   }
 
   async replacePageMarkdown(pageId: string, markdown: string): Promise<void> {

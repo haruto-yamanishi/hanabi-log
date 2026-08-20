@@ -60,3 +60,26 @@ test("タイトルが空欄なら投稿者名から自動生成して公開で�
   await expect(page.getByRole("heading", { name: "HANABI Demoの雑多な日報" })).toBeVisible();
   await expect(page.getByText(activity).first()).toBeVisible();
 });
+
+test("管理者が確認後に日報を完全削除できる", async ({ page }) => {
+  const uniqueTitle = `E2E 完全削除テスト ${Date.now()}`;
+
+  await page.goto("/reports/new");
+  await page.getByLabel("タイトル任意").fill(uniqueTitle);
+  await page.getByLabel("活動領域必須").selectOption({ label: "ロボット" });
+  await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
+  await page.getByLabel("今日やったこと必須").fill("完全削除の権限と確認画面を検証した。");
+  await page.getByRole("button", { name: "公開する" }).click();
+
+  await expect(page).toHaveURL(/\/reports\/[^/?]+\?published=1$/, { timeout: navigationTimeout });
+  const reportId = new URL(page.url()).pathname.split("/").at(-1)!;
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("この操作は元に戻せません");
+    await dialog.accept();
+  });
+  await page.getByRole("button", { name: "完全削除" }).click();
+
+  await expect(page).toHaveURL("/", { timeout: navigationTimeout });
+  const deletedResponse = await page.request.get(`/api/reports/${reportId}`);
+  expect(deletedResponse.status()).toBe(404);
+});

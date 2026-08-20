@@ -80,6 +80,7 @@ describe("SlackReportService", () => {
     return {
       postMessage: vi.fn(async () => ({ channel: "C1", ts: "100.1" })),
       updateMessage: vi.fn(async () => undefined),
+      deleteMessage: vi.fn(async () => undefined),
       getPermalink: vi.fn(async () => "https://slack.test/archives/C1/p1001"),
     };
   }
@@ -151,6 +152,28 @@ describe("SlackReportService", () => {
         code: "SLACK_SERVICE_UNAVAILABLE",
         retryable: true,
       },
+    });
+  });
+
+  it("deletes the exact bound bot message", async () => {
+    const client = api();
+    const service = new SlackReportService(
+      client,
+      "C-new",
+      "https://log.example.test",
+    );
+    await service.remove({
+      reportId: "report-1",
+      slackChannelId: "C-existing",
+      slackMessageTs: "200.2",
+      slackStatus: "delivered",
+      notionStatus: "pending",
+      updatedAt: "2026-08-19T00:00:00.000Z",
+    });
+
+    expect(client.deleteMessage).toHaveBeenCalledWith({
+      channel: "C-existing",
+      ts: "200.2",
     });
   });
 });

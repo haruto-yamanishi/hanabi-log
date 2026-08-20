@@ -2,16 +2,18 @@
 
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { CurrentUser, Report } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
-import { ArchiveIcon, ArrowLeftIcon, CalendarIcon, CheckIcon, EditIcon, ExternalLinkIcon, LinkIcon, RefreshIcon } from "@/components/icons";
+import { ArchiveIcon, ArrowLeftIcon, CalendarIcon, CheckIcon, EditIcon, ExternalLinkIcon, LinkIcon, RefreshIcon, TrashIcon } from "@/components/icons";
 import { formatDateTime, formatReportDate, StatusBadge } from "@/components/report-card";
 import { SyncStatusPanel } from "@/components/sync-status";
 import { Avatar, ErrorState, LoadingView } from "@/components/ui";
 import { activityAreaClassName } from "@/lib/constants";
 
 export function ReportDetailScreen({ reportId, initialNotice }: { reportId: string; initialNotice?: string }) {
+  const router = useRouter();
   const [report, setReport] = useState<Report | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,23 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
     }
   }
 
+  async function deleteReport() {
+    if (!report || user?.role !== "admin") return;
+    if (!window.confirm(
+      `「${report.title}」を完全に削除しますか？\n\nWeb上の日報と添付画像を削除し、Slack投稿を削除、Notionページをゴミ箱へ移動します。この操作は元に戻せません。`,
+    )) return;
+    setActing(true);
+    setError(null);
+    try {
+      await apiRequest<void>(`/api/reports/${report.id}`, { method: "DELETE" });
+      router.replace("/");
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "日報を削除できませんでした");
+      setActing(false);
+    }
+  }
+
   if (loading) return <div className="page"><LoadingView label="日報を読み込んでいます" /></div>;
   if (error && !report) return <div className="page"><ErrorState message={error} onRetry={() => void load()} /></div>;
   if (!report) return <div className="page"><ErrorState message="URLを確認してください。" title="日報が見つかりません" /></div>;
@@ -82,6 +101,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
           {canEdit && report.status !== "archived" ? <Link className="button button--secondary button--small" href={`/reports/${report.id}/edit`}><EditIcon />編集</Link> : null}
           {canEdit && report.status !== "archived" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void changeStatus("archive")} type="button"><ArchiveIcon />アーカイブ</button> : null}
           {canRestore ? <button className="button button--secondary button--small" disabled={acting} onClick={() => void changeStatus("restore")} type="button"><RefreshIcon />公開へ復元</button> : null}
+          {user?.role === "admin" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void deleteReport()} type="button"><TrashIcon />完全削除</button> : null}
         </div>
       </div>
 

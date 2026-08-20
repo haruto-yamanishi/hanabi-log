@@ -23,12 +23,18 @@ export interface SlackUpdateMessageInput extends SlackMessagePayload {
   ts: string;
 }
 
+export interface SlackDeleteMessageInput {
+  channel: string;
+  ts: string;
+}
+
 export interface SlackApiPort {
   postMessage(input: SlackPostMessageInput): Promise<{
     channel: string;
     ts: string;
   }>;
   updateMessage(input: SlackUpdateMessageInput): Promise<void>;
+  deleteMessage(input: SlackDeleteMessageInput): Promise<void>;
   getPermalink(input: { channel: string; messageTs: string }): Promise<string>;
 }
 
@@ -42,6 +48,7 @@ export interface SlackSyncResult {
 
 export interface SlackReportIntegration {
   sync(report: Report, binding: IntegrationBinding | null): Promise<SlackSyncResult>;
+  remove(binding: IntegrationBinding | null): Promise<void>;
 }
 
 const ACTIVITY_EMOJI: Record<Report["activityArea"], string> = {
@@ -180,6 +187,14 @@ export class SlackReportService implements SlackReportIntegration {
     });
   }
 
+  async remove(binding: IntegrationBinding | null): Promise<void> {
+    if (!binding?.slackChannelId || !binding.slackMessageTs) return;
+    await this.api.deleteMessage({
+      channel: binding.slackChannelId,
+      ts: binding.slackMessageTs,
+    });
+  }
+
   private async resolvePermalink(input: {
     channelId: string;
     messageTs: string;
@@ -257,6 +272,22 @@ export class SlackWebApiAdapter implements SlackApiPort {
     await this.enqueueWrite(async () => {
       await this.client.chat.update(input);
     });
+  }
+
+  async deleteMessage(input: SlackDeleteMessageInput): Promise<void> {
+    try {
+      await this.enqueueWrite(async () => {
+        await this.client.chat.delete(input);
+      });
+    } catch (error) {
+      const code =
+        typeof error === "object" && error !== null && "data" in error &&
+        typeof error.data === "object" && error.data !== null && "error" in error.data
+          ? error.data.error
+          : undefined;
+      if (code === "message_not_found") return;
+      throw error;
+    }
   }
 
   async getPermalink(input: {

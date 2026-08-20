@@ -150,3 +150,27 @@ export async function signReportAttachments(report: Report, origin: string): Pro
     ),
   };
 }
+
+export async function deleteReportAttachments(report: Report): Promise<void> {
+  const paths = [...new Set(report.attachments.map((attachment) => attachment.storagePath))];
+  if (paths.length === 0) return;
+
+  if (isDemoMode) {
+    for (const path of paths) demoObjects().delete(path);
+    const pathSet = new Set(paths);
+    for (const [token, grant] of uploadGrants()) {
+      if (pathSet.has(grant.storagePath)) uploadGrants().delete(token);
+    }
+    for (const [token, grant] of readGrants()) {
+      if (pathSet.has(grant.storagePath)) readGrants().delete(token);
+    }
+    return;
+  }
+
+  const { error } = await supabase()
+    .storage.from(env.SUPABASE_STORAGE_BUCKET)
+    .remove(paths);
+  if (error) {
+    throw new AppError("STORAGE_DELETE_ERROR", "添付画像を削除できませんでした", 502);
+  }
+}

@@ -492,6 +492,22 @@ export class MemoryReportRepository implements ReportRepository {
     return clone(report);
   }
 
+  async deleteReport(reportId: string, actor: CurrentUser): Promise<void> {
+    if (actor.role !== "admin") {
+      throw new AppError("FORBIDDEN", "管理者権限が必要です", 403);
+    }
+    if (!state().reports.has(reportId)) {
+      throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+    }
+    state().reports.delete(reportId);
+    for (const [jobId, job] of state().jobs) {
+      if (job.reportId === reportId) state().jobs.delete(jobId);
+    }
+    for (const [key, storedReportId] of state().idempotency) {
+      if (storedReportId === reportId) state().idempotency.delete(key);
+    }
+  }
+
   async requestIntegrationRetry(
     reportId: string,
     target: DeliveryTarget,

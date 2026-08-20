@@ -11,6 +11,8 @@ import { requireCurrentUser } from "@/server/auth";
 import { processReportJobs } from "@/server/integrations/outbox";
 import { getReportRepository } from "@/server/repositories";
 import { resolveReportTitle } from "@/lib/report-title";
+import { AppError } from "@/server/errors";
+import { deleteReportResources } from "@/server/reports/delete-report-resources";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -52,5 +54,25 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
       report = (await getReportRepository().getReadableReport(id, user)) ?? report;
     }
     return reportResponse(report, request);
+  });
+}
+
+export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
+  return apiResponse(async () => {
+    const user = await requireCurrentUser();
+    if (user.role !== "admin") {
+      throw new AppError("FORBIDDEN", "管理者権限が必要です", 403);
+    }
+    const id = reportId((await context.params).id);
+    const repository = getReportRepository();
+    const report = await repository.getReadableReport(id, user);
+    if (!report) notFound();
+
+    await deleteReportResources(report);
+    await repository.deleteReport(id, user);
+    return new Response(null, {
+      status: 204,
+      headers: { "Cache-Control": "private, no-store" },
+    });
   });
 }

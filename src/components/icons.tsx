@@ -138,6 +138,15 @@ export function ArchiveIcon(props: IconProps) {
   );
 }
 
+export function TrashIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 7h16M9 3h6l1 4H8l1-4Zm-3 4 1 14h10l1-14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M10 11v6m4-6v6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    </IconBase>
+  );
+}
+
 export function RefreshIcon(props: IconProps) {
   return (
     <IconBase {...props}>

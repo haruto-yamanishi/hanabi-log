@@ -21,8 +21,8 @@ import type { OutboxRepository } from "@/server/repositories/types";
 
 export interface OutboxDependencies {
   repository: OutboxRepository;
-  slack: SlackReportIntegration;
-  notion: NotionReportIntegration;
+  slack: Pick<SlackReportIntegration, "sync">;
+  notion: Pick<NotionReportIntegration, "sync" | "refreshProperties">;
   now?: () => Date;
   batchSize?: number;
   notionConcurrency?: number;

@@ -50,3 +50,32 @@ describe("MemoryReportRepository outbox claiming", () => {
     expect(concurrent).toEqual([]);
   });
 });
+
+describe("MemoryReportRepository report deletion", () => {
+  it("allows only an Admin to permanently delete a report", async () => {
+    const repository = new MemoryReportRepository();
+    const admin = getDemoMember();
+    const created = await repository.createDraft(admin, {
+      reportDate: "2026-08-20",
+      title: "削除権限テスト",
+      summary: "",
+      activityArea: "ロボット",
+      contentCategory: "進捗",
+      activityText: "削除権限を確認した。",
+      learningText: "",
+      issueText: "",
+      nextActionText: "",
+      themeTags: [],
+      relatedLinks: [],
+      attachments: [],
+    });
+
+    await expect(
+      repository.deleteReport(created.id, { ...admin, role: "member" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    await expect(repository.getReport(created.id)).resolves.not.toBeNull();
+
+    await repository.deleteReport(created.id, admin);
+    await expect(repository.getReport(created.id)).resolves.toBeNull();
+  });
+});
