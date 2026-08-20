@@ -44,9 +44,9 @@ npm run dev
 3. 続けて `supabase/migrations/202608190002_private_storage.sql` を実行します。このmigrationがPrivate bucket `hanabi-log-private` を作成し、5 MiBの上限と許可する画像形式を設定します。
 4. `supabase/migrations/202608190003_notion_file_upload_state.sql` を実行します。Notion画像同期の再試行に使うFile Upload IDを添付へ保持します。
 5. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
-6. Project URLとservice role keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` に設定します。
+6. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
 
-DBとStorageへのアクセスはサーバー側だけに限定します。service role keyを `NEXT_PUBLIC_` 変数へ設定しないでください。
+DBとStorageへのアクセスはサーバー側だけに限定します。Secret keyを `NEXT_PUBLIC_` 変数へ設定しないでください。
 
 ### 日次バックアップ運用
 

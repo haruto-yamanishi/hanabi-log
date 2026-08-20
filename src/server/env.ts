@@ -15,7 +15,7 @@ const schema = z.object({
   SLACK_CHANNEL_ID: optional,
   DATABASE_URL: optional,
   SUPABASE_URL: optional,
-  SUPABASE_SERVICE_ROLE_KEY: optional,
+  SUPABASE_SECRET_KEY: optional,
   SUPABASE_STORAGE_BUCKET: z.string().default("hanabi-log-private"),
   NOTION_ACCESS_TOKEN: optional,
   NOTION_API_VERSION: z.string().default("2026-03-11"),
@@ -43,7 +43,7 @@ export function assertProductionEnv(): void {
     "SLACK_CHANNEL_ID",
     "DATABASE_URL",
     "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_SECRET_KEY",
     "NOTION_ACCESS_TOKEN",
     "CRON_SECRET",
   ] as const;

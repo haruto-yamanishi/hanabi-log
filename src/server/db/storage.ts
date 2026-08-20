@@ -29,12 +29,12 @@ const globalStorage = globalThis as typeof globalThis & {
 };
 
 function supabase(): SupabaseClient {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required outside demo mode");
+  if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
+    throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY are required outside demo mode");
   }
   globalStorage.__hanabiSupabase ??= createClient(
     env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
+    env.SUPABASE_SECRET_KEY,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
   return globalStorage.__hanabiSupabase;

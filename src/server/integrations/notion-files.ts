@@ -139,7 +139,7 @@ export function createNotionFileDependencies(): NotionFileDependencies {
     };
   }
 
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
     throw new IntegrationError("PRIVATE_STORAGE_ENV_MISSING", {
       retryable: false,
     });
@@ -147,7 +147,7 @@ export function createNotionFileDependencies(): NotionFileDependencies {
 
   const client = createClient(
     env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
+    env.SUPABASE_SECRET_KEY,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
   return {
