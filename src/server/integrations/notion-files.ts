@@ -131,8 +131,10 @@ class DemoNotionFileUploadState implements NotionFileUploadStatePort {
   }
 }
 
-export function createNotionFileDependencies(): NotionFileDependencies {
-  if (isDemoMode) {
+export function createNotionFileDependencies(
+  demoMode = isDemoMode,
+): NotionFileDependencies {
+  if (demoMode) {
     return {
       content: new DemoAttachmentContent(),
       state: new DemoNotionFileUploadState(),

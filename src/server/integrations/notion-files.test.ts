@@ -102,7 +102,7 @@ describe("createNotionFileDependencies", () => {
       ],
     ]);
     demoGlobal.__hanabiDemoNotionFileUploads = new Map();
-    const dependencies = createNotionFileDependencies();
+    const dependencies = createNotionFileDependencies(true);
 
     const data = await dependencies.content.load(attachment);
     expect(data.size).toBe(3);
