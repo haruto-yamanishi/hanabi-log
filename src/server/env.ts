@@ -1,13 +1,20 @@
 import "server-only";
 import { z } from "zod";
 
-const optional = z.string().trim().optional();
+function emptyStringToUndefined(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
+
+const optional = z.preprocess(emptyStringToUndefined, z.string().trim().optional());
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_BASE_URL: optional,
   AUTH_SECRET: optional,
-  DEMO_MODE: z.enum(["true", "false"]).optional(),
+  DEMO_MODE: z.preprocess(
+    emptyStringToUndefined,
+    z.enum(["true", "false"]).optional(),
+  ),
   SLACK_CLIENT_ID: optional,
   SLACK_CLIENT_SECRET: optional,
   SLACK_TEAM_ID: optional,
@@ -28,11 +35,11 @@ const schema = z.object({
 export const env = schema.parse(process.env);
 
 export const isDemoMode =
-  env.NODE_ENV !== "production" &&
-  (env.DEMO_MODE === "true" || (!env.DEMO_MODE && !env.DATABASE_URL));
+  env.DEMO_MODE === "true" ||
+  (env.NODE_ENV !== "production" && !env.DEMO_MODE && !env.DATABASE_URL);
 
 export function assertProductionEnv(): void {
-  if (env.NODE_ENV !== "production") return;
+  if (env.NODE_ENV !== "production" || isDemoMode) return;
   const required = [
     "APP_BASE_URL",
     "AUTH_SECRET",

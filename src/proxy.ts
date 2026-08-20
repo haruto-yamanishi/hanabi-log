@@ -4,9 +4,10 @@ import { NextResponse } from "next/server";
 
 function localDemoMode(): boolean {
   return (
-    process.env.NODE_ENV !== "production" &&
-    (process.env.DEMO_MODE === "true" ||
-      (!process.env.DEMO_MODE && !process.env.DATABASE_URL))
+    process.env.DEMO_MODE === "true" ||
+    (process.env.NODE_ENV !== "production" &&
+      !process.env.DEMO_MODE &&
+      !process.env.DATABASE_URL)
   );
 }
 
