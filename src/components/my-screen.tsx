@@ -124,21 +124,44 @@ function ContributionGraph({ summary }: { summary: ContributionSummary | null })
     date.setDate(date.getDate() - (364 - index));
     return date;
   });
-  const dateKey = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(date);
-  const max = Math.max(1, ...days.values());
+  const dateKey = (date: Date) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(date);
+    const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${value.year}-${value.month}-${value.day}`;
+  };
+  const weekday = (date: Date) => new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", weekday: "short" }).format(date);
+  const weekdayIndex = ({ Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 } as Record<string, number>)[weekday(dates[0])] ?? 0;
+  const months = dates.flatMap((date, index) => {
+    const key = dateKey(date);
+    const previous = index ? dateKey(dates[index - 1]) : null;
+    if (index && previous?.slice(0, 7) === key.slice(0, 7)) return [];
+    return [{ label: new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "short" }).format(date), column: Math.floor((weekdayIndex + index) / 7) + 1 }];
+  });
   return (
     <section className="contribution-graph" aria-labelledby="contributions-heading">
-      <div className="section-heading"><h2 id="contributions-heading">コントリビューション</h2><span>{summary ? `${summary.total}件` : "読み込み中"}</span></div>
+      <div className="section-heading"><h2 id="contributions-heading">コントリビューション</h2><span>{summary ? `この1年 ${summary.total}件` : "読み込み中"}</span></div>
       <div className="contribution-graph__scroll">
-        <div className="contribution-graph__grid" aria-label="過去1年間の投稿とコメント">
-          {dates.map((date) => {
-            const count = days.get(dateKey(date)) ?? 0;
-            const level = count === 0 ? 0 : Math.min(4, Math.ceil((count / max) * 4));
-            return <span className={`contribution-graph__day contribution-graph__day--${level}`} key={dateKey(date)} title={`${dateKey(date)}: ${count}件`} />;
-          })}
+        <div className="contribution-graph__chart">
+          <div aria-hidden="true" className="contribution-graph__weekdays"><span>月</span><span /><span>水</span><span /><span>金</span><span /><span>日</span></div>
+          <div>
+            <div aria-hidden="true" className="contribution-graph__months">
+              {months.map((month) => <span key={`${month.label}-${month.column}`} style={{ gridColumnStart: month.column }}>{month.label}</span>)}
+            </div>
+            <div className="contribution-graph__grid" aria-label="過去1年間の投稿とコメント">
+              {Array.from({ length: weekdayIndex }, (_, index) => <span aria-hidden="true" className="contribution-graph__blank" key={`blank-${index}`} />)}
+              {dates.map((date) => {
+                const key = dateKey(date);
+                const count = days.get(key) ?? 0;
+                const level = count === 0 ? 0 : Math.min(4, count);
+                return <span className={`contribution-graph__day contribution-graph__day--${level}`} key={key} title={`${key}: ${count}件`} />;
+              })}
+            </div>
+          </div>
         </div>
       </div>
-      <p>公開した日報とコメントの記録</p>
+      <p>{summary?.total ? "公開した日報とコメントの記録です。濃いほど、その日の活動数が多いことを示します。" : "まだ活動記録はありません。日報を公開するかコメントすると反映されます。"}</p>
     </section>
   );
 }
