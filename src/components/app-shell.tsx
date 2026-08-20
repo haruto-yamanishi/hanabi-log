@@ -2,11 +2,41 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 import type { CurrentUser } from "@/lib/types";
-import { HomeIcon, PlusIcon, SearchIcon, SettingsIcon, UserIcon } from "@/components/icons";
+import { ArrowLeftIcon, ArrowRightIcon, HomeIcon, PlusIcon, SearchIcon, SettingsIcon, UserIcon } from "@/components/icons";
 import { HanabiMark } from "@/components/logo";
 import { Avatar } from "@/components/ui";
+
+const sidebarStorageKey = "hanabi-log-sidebar-collapsed";
+const sidebarChangeEvent = "hanabi-log-sidebar-change";
+let sidebarMemoryValue = false;
+
+function subscribeToSidebar(callback: () => void) {
+  function handleStorage(event: StorageEvent) {
+    if (!event.key || event.key === sidebarStorageKey) callback();
+  }
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(sidebarChangeEvent, callback);
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(sidebarChangeEvent, callback);
+  };
+}
+
+function getSidebarSnapshot() {
+  try {
+    return window.localStorage.getItem(sidebarStorageKey) === "true";
+  } catch {
+    return sidebarMemoryValue;
+  }
+}
+
+function getServerSidebarSnapshot() {
+  return false;
+}
 
 const navigation = [
   { href: "/", label: "ホーム", icon: HomeIcon, exact: true },
@@ -20,23 +50,54 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export function AppShell({ children, initialUser }: { children: ReactNode; initialUser: CurrentUser }) {
   const pathname = usePathname();
+  const sidebarCollapsed = useSyncExternalStore(subscribeToSidebar, getSidebarSnapshot, getServerSidebarSnapshot);
   const user = initialUser;
 
+  function toggleSidebar() {
+    const next = !sidebarCollapsed;
+    sidebarMemoryValue = next;
+
+    try {
+      window.localStorage.setItem(sidebarStorageKey, String(next));
+    } catch {
+      // 保存できなくても、この画面内での開閉は続ける。
+    }
+
+    window.dispatchEvent(new Event(sidebarChangeEvent));
+  }
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sidebarCollapsed ? " app-shell--sidebar-collapsed" : ""}`}>
       <a className="skip-link" href="#main-content">本文へ移動</a>
 
-      <aside className="sidebar">
+      <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
+        <button
+          aria-expanded={!sidebarCollapsed}
+          aria-label={sidebarCollapsed ? "メニューを開く" : "メニューを閉じる"}
+          className="sidebar__toggle"
+          onClick={toggleSidebar}
+          title={sidebarCollapsed ? "メニューを開く" : "メニューを閉じる"}
+          type="button"
+        >
+          {sidebarCollapsed ? <ArrowRightIcon /> : <ArrowLeftIcon />}
+        </button>
         <div className="sidebar__brand">
           <HanabiMark />
         </div>
-        <Link className="button button--primary sidebar__create" href="/reports/new">
+        <Link aria-label="日報を書く" className="button button--primary sidebar__create" href="/reports/new" title={sidebarCollapsed ? "日報を書く" : undefined}>
           <PlusIcon />
-          日報を書く
+          <span>日報を書く</span>
         </Link>
         <nav aria-label="メインナビゲーション" className="sidebar__nav">
           {navigation.map(({ href, label, icon: Icon, exact }) => (
-            <Link aria-current={isActive(pathname, href, exact) ? "page" : undefined} className="nav-link" href={href} key={href}>
+            <Link
+              aria-current={isActive(pathname, href, exact) ? "page" : undefined}
+              aria-label={sidebarCollapsed ? label : undefined}
+              className="nav-link"
+              href={href}
+              key={href}
+              title={sidebarCollapsed ? label : undefined}
+            >
               <Icon />
               <span>{label}</span>
             </Link>
@@ -44,13 +105,19 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
         </nav>
         <div className="sidebar__secondary">
           {user?.role === "admin" ? (
-            <Link aria-current={isActive(pathname, "/admin") ? "page" : undefined} className="nav-link" href="/admin">
+            <Link
+              aria-current={isActive(pathname, "/admin") ? "page" : undefined}
+              aria-label={sidebarCollapsed ? "管理" : undefined}
+              className="nav-link"
+              href="/admin"
+              title={sidebarCollapsed ? "管理" : undefined}
+            >
               <SettingsIcon />
               <span>管理</span>
             </Link>
           ) : null}
         </div>
-        <Link className="sidebar__profile" href="/me">
+        <Link aria-label="マイページ" className="sidebar__profile" href="/me" title={sidebarCollapsed ? "マイページ" : undefined}>
           <Avatar name={user?.displayName || "Hanabiメンバー"} src={user?.avatarUrl} />
           <span>
             <strong>{user?.displayName || "Hanabiメンバー"}</strong>

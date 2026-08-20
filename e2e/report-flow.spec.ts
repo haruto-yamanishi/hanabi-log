@@ -3,6 +3,23 @@ import { expect, test } from "@playwright/test";
 test.setTimeout(150_000);
 const navigationTimeout = 90_000;
 
+test("PCサイドバーを折りたたみ、状態を保存できる", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "PC用サイドバーの確認");
+
+  await page.goto("/");
+  const shell = page.locator(".app-shell");
+  const sidebar = page.locator(".sidebar");
+
+  await page.getByRole("button", { name: "メニューを閉じる" }).click();
+  await expect(page.getByRole("button", { name: "メニューを開く" })).toBeVisible();
+  await expect(shell).toHaveClass(/app-shell--sidebar-collapsed/);
+  await expect(sidebar).toHaveClass(/sidebar--collapsed/);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "メニューを開く" })).toBeVisible();
+  await expect(shell).toHaveClass(/app-shell--sidebar-collapsed/);
+});
+
 test("日報を下書き保存・公開し、検索から詳細を開ける", async ({ page }, testInfo) => {
   const deviceLabel = testInfo.project.name === "mobile" ? "モバイル" : "デスクトップ";
   const uniqueTitle = `E2E ${deviceLabel} 駆動系テスト ${Date.now()}`;
