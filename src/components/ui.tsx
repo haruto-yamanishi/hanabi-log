@@ -22,13 +22,11 @@ export function Avatar({
 }
 
 export function PageHeader({
-  eyebrow,
   title,
   description,
   actions,
   backHref,
 }: {
-  eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
@@ -43,7 +41,6 @@ export function PageHeader({
             戻る
           </Link>
         ) : null}
-        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
         {description ? <p className="page-header__description">{description}</p> : null}
       </div>

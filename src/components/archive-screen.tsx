@@ -142,7 +142,7 @@ export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParam
 
   return (
     <div className="page page--wide">
-      <PageHeader description="活動領域やタグ、キーワードからチームの知見を見つけます。" eyebrow="ARCHIVE" title="日報をさがす" />
+      <PageHeader description="活動領域やタグ、キーワードからチームの知見を見つけます。" title="日報をさがす" />
 
       <form className="search-layout" onSubmit={applyFilters}>
         <aside className="filter-panel">

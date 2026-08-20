@@ -75,7 +75,6 @@ export function HomeScreen() {
       <section aria-labelledby="today-heading" className="content-section">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">TODAY</p>
             <h2 id="today-heading">今日の日報</h2>
           </div>
           <span className="section-heading__count">{loading ? "—" : `${todayReports.length}件`}</span>
@@ -102,7 +101,6 @@ export function HomeScreen() {
       <section aria-labelledby="recent-heading" className="content-section content-section--recent">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">RECENT</p>
             <h2 id="recent-heading">最近の日報</h2>
           </div>
           <Link className="text-link" href="/archive">すべて見る<ArrowRightIcon /></Link>

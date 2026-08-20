@@ -174,7 +174,7 @@ export function AdminScreen() {
   if (!loading && user && user.role !== "admin") {
     return (
       <div className="page">
-        <PageHeader eyebrow="ADMIN" title="管理" />
+        <PageHeader title="管理" />
         <ErrorState message="この画面はAdminだけが利用できます。" title="アクセス権限がありません" />
       </div>
     );
@@ -182,7 +182,7 @@ export function AdminScreen() {
 
   return (
     <div className="page page--wide">
-      <PageHeader description="同期状態、メンバー、分類を確認します。" eyebrow="ADMIN CONSOLE" title="管理" />
+      <PageHeader description="同期状態、メンバー、分類を確認します。" title="管理" />
       {loading ? <LoadingView label="管理情報を読み込んでいます" /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : (
         <>
           <section aria-label="システム概要" className="admin-stats">

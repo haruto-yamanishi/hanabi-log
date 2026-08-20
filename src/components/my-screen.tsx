@@ -52,7 +52,7 @@ export function MyScreen() {
 
   return (
     <div className="page">
-      <PageHeader actions={<Link className="button button--primary" href="/reports/new"><PlusIcon />日報を書く</Link>} eyebrow="MY LOG" title="マイページ" />
+      <PageHeader actions={<Link className="button button--primary" href="/reports/new"><PlusIcon />日報を書く</Link>} title="マイページ" />
 
       {error && !user ? <ErrorState message={error} onRetry={() => void load()} /> : (
         <>
@@ -77,7 +77,6 @@ export function MyScreen() {
           <section aria-labelledby="my-reports-heading" className="content-section">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">YOUR REPORTS</p>
                 <h2 id="my-reports-heading">自分の日報</h2>
               </div>
             </div>

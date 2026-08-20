@@ -159,7 +159,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
 
       {report.status === "published" ? (
         <aside className="conversation-card">
-          <div><p className="eyebrow">CONTINUE THE CONVERSATION</p><h2>感想や質問はSlackで</h2><p>会話をひとつの場所に集めて、補足や次のアイデアへつなげます。</p></div>
+          <div><h2>感想や質問はSlackで</h2><p>会話をひとつの場所に集めて、補足や次のアイデアへつなげます。</p></div>
           <div>
             {slackUrl ? <a className="button button--slack" href={slackUrl} rel="noreferrer" target="_blank">Slackで話す<ExternalLinkIcon /></a> : <button className="button button--secondary" disabled type="button">Slackへ同期中</button>}
             {notionUrl ? <a className="button button--secondary" href={notionUrl} rel="noreferrer" target="_blank">Notionで開く<ExternalLinkIcon /></a> : null}

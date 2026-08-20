@@ -245,15 +245,6 @@ strong {
 .brand--compact .brand__image { width: 120px; }
 
 /* Shared */
-.eyebrow {
-  color: var(--hanabi);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-}
-
 .button {
   align-items: center;
   border: 1px solid transparent;
@@ -1328,7 +1319,7 @@ strong {
 .conversation-card::after { background: radial-gradient(circle, rgba(234,181,72,.2), transparent 70%); content: ""; height: 240px; position: absolute; right: -110px; top: -120px; width: 240px; }
 .conversation-card > * { position: relative; z-index: 1; }
 .conversation-card h2 { font-size: 19px; margin-bottom: 4px; }
-.conversation-card p:not(.eyebrow) { color: #bac4d1; font-size: 11px; margin: 0; max-width: 450px; }
+.conversation-card p { color: #bac4d1; font-size: 11px; margin: 0; max-width: 450px; }
 .conversation-card > div:last-child { display: flex; flex-wrap: wrap; gap: 8px; }
 .mobile-detail-actions { bottom: calc(77px + env(safe-area-inset-bottom)); display: flex; gap: 8px; left: 16px; position: fixed; right: 16px; z-index: 40; }
 .mobile-detail-actions > .button:first-child { flex: 1; }
@@ -1513,12 +1504,6 @@ h1,
 h2,
 h3 {
   letter-spacing: 0 !important;
-}
-
-.eyebrow {
-  font-family: var(--font-latin);
-  font-size: 12px;
-  letter-spacing: 0.12em;
 }
 
 .button {

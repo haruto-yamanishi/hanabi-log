@@ -34,7 +34,6 @@ export default async function LoginPage({
       <section className="login-panel" aria-labelledby="login-title">
         <div className="login-card">
           <HanabiLogo className="login-card__logo" />
-          <p className="eyebrow">TEAM HANABI MEMBERS ONLY</p>
           <h2 id="login-title">おかえりなさい</h2>
           <p className="login-card__lead">チームのSlackアカウントでログインしてください。</p>
           <SlackSignInButton callbackUrl={callbackUrl} />

@@ -253,7 +253,6 @@ export function ReportForm({
       <header className="form-header">
         <div>
           <Link className="back-link" href={report ? `/reports/${report.id}` : "/"}><ArrowLeftIcon />戻る</Link>
-          <p className="eyebrow">{report ? "EDIT REPORT" : "NEW REPORT"}</p>
           <h1>{report ? "日報を編集" : "今日を記録する"}</h1>
           <p>{report ? "変更した内容は、公開済みなら同じSlack投稿とNotionページへ反映されます。" : "必須項目は4つ。まずは今日やったことを短く残しましょう。"}</p>
         </div>
@@ -369,7 +368,6 @@ export function ReportForm({
 
         <aside className="form-aside">
           <div className="form-guide">
-            <p className="eyebrow">PUBLISH FLOW</p>
             <h2>公開すると</h2>
             <ol><li><span>1</span><p><strong>Webへ保存</strong><small>まず本文を確実に保存します</small></p></li><li><span>2</span><p><strong>Slackへ投稿</strong><small>タイトルと要約をカードで共有</small></p></li><li><span>3</span><p><strong>Notionへ同期</strong><small>長く使える知識として整理</small></p></li></ol>
             <p className="form-guide__note">外部サービスに障害があっても、日報は失われません。</p>
