@@ -1,6 +1,21 @@
 import type { Metadata, Viewport } from "next";
+import { Outfit, Zen_Kaku_Gothic_New } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
+
+const zenKakuGothic = Zen_Kaku_Gothic_New({
+  display: "swap",
+  preload: false,
+  variable: "--font-zen-kaku",
+  weight: ["400", "500", "700", "900"],
+});
+
+const outfit = Outfit({
+  display: "swap",
+  subsets: ["latin"],
+  variable: "--font-outfit",
+  weight: ["400", "500", "700"],
+});
 
 export const metadata: Metadata = {
   title: {
@@ -27,7 +42,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html data-scroll-behavior="smooth" lang="ja">
+    <html className={`${zenKakuGothic.variable} ${outfit.variable}`} data-scroll-behavior="smooth" lang="ja">
       <body>{children}</body>
     </html>
   );
