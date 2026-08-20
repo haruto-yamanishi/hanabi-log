@@ -8,6 +8,7 @@ import { ArrowLeftIcon } from "@/components/icons";
 import { ReportCard } from "@/components/report-card";
 import { Avatar, EmptyState, ErrorState, LoadingView, PageHeader } from "@/components/ui";
 import { ContributionGraph } from "@/components/contribution-graph";
+import { LogRankingCard } from "@/components/log-ranking";
 
 export function MemberProfileScreen({ memberId }: { memberId: string }) {
   const [member, setMember] = useState<PublicMember | null>(null);
@@ -58,18 +59,4 @@ export function MemberProfileScreen({ memberId }: { memberId: string }) {
       {reports.length ? <div className="report-list">{reports.map((report) => <ReportCard key={report.id} report={report} />)}</div> : <EmptyState message="公開されている日報はまだありません。" title="公開日報はありません" />}
     </section>
   </div>;
-}
-
-function LogRankingCard({ ranking }: { ranking: LogRanking | null }) {
-  if (!ranking) return null;
-  return <section className="log-ranking" aria-labelledby="log-ranking-heading">
-    <div className="section-heading"><div><p>LOG RANKING</p><h2 id="log-ranking-heading">#{ranking.rank} <span>/ {ranking.memberCount}</span></h2></div><strong>{ranking.score}<small>pt</small></strong></div>
-    <dl>
-      <div><dt>公開日報</dt><dd>{ranking.publishedReports}</dd></div>
-      <div><dt>いいね</dt><dd>{ranking.likesReceived}</dd></div>
-      <div><dt>もらったコメント</dt><dd>{ranking.commentsReceived}</dd></div>
-      <div><dt>したコメント</dt><dd>{ranking.commentsMade}</dd></div>
-      <div><dt>連続活動</dt><dd>{ranking.currentStreak}<small>日</small></dd></div>
-    </dl>
-  </section>;
 }

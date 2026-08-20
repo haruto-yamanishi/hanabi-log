@@ -450,6 +450,12 @@ export class PostgresReportRepository implements ReportRepository {
     return { rank: ranking.findIndex((row) => row.member_id === memberId) + 1, memberCount: ranking.length, score: target.score, publishedReports: target.published_reports, likesReceived: target.likes_received, commentsReceived: target.comments_received, commentsMade: target.comments_made, currentStreak };
   }
 
+  async listLogRankings(): Promise<{ member: Member; ranking: LogRanking }[]> {
+    const members = await this.listMembers();
+    const rows = await Promise.all(members.map(async (member) => ({ member, ranking: await this.getLogRanking(member.id) })));
+    return rows.sort((left, right) => left.ranking.rank - right.ranking.rank);
+  }
+
   async setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null> {
     const rows = await this.sql<MemberRow[]>`
       update members

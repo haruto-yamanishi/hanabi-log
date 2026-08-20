@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { ContributionSummary, CurrentUser, ReportListItem, ReportPage } from "@/lib/types";
+import type { ContributionSummary, CurrentUser, LogRanking, LogRankingEntry, ReportListItem, ReportPage } from "@/lib/types";
 import type { ReportStatus } from "@/lib/constants";
 import { apiRequest } from "@/components/api-client";
 import { ArrowRightIcon, PlusIcon, SettingsIcon } from "@/components/icons";
 import { ReportCard } from "@/components/report-card";
 import { ContributionGraph } from "@/components/contribution-graph";
+import { LogRankingCard, LogRankingList } from "@/components/log-ranking";
 import { Avatar, EmptyState, ErrorState, PageHeader, SkeletonList } from "@/components/ui";
 
 const tabs: { value: ReportStatus; label: string }[] = [
@@ -24,19 +25,24 @@ export function MyScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contributions, setContributions] = useState<ContributionSummary | null>(null);
+  const [ranking, setRanking] = useState<LogRanking | null>(null);
+  const [rankings, setRankings] = useState<LogRankingEntry[]>([]);
+  const [view, setView] = useState<"reports" | "ranking">("reports");
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const me = await apiRequest<CurrentUser>("/api/me", { signal });
-      const [pages, contributionSummary] = await Promise.all([Promise.all(tabs.map(({ value }) => apiRequest<ReportPage>(
+      const [pages, contributionSummary, rankingSummary, rankingList] = await Promise.all([Promise.all(tabs.map(({ value }) => apiRequest<ReportPage>(
         `/api/reports?authorId=${encodeURIComponent(me.id)}&status=${value}&limit=50`,
         { signal },
-      ))), apiRequest<ContributionSummary>("/api/me/contributions", { signal }).catch(() => null)]);
+      ))), apiRequest<ContributionSummary>("/api/me/contributions", { signal }).catch(() => null), apiRequest<LogRanking>(`/api/members/${me.id}/ranking`, { signal }).catch(() => null), apiRequest<LogRankingEntry[]>("/api/rankings", { signal }).catch(() => [])]);
       setUser(me);
       setReports({ draft: pages[0].reports, pending_approval: pages[1].reports, published: pages[2].reports, archived: pages[3].reports });
       setContributions(contributionSummary);
+      setRanking(rankingSummary);
+      setRankings(rankingList);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "マイページを読み込めませんでした");
@@ -82,6 +88,11 @@ export function MyScreen() {
           <ContributionGraph summary={contributions} />
 
           <section aria-labelledby="my-reports-heading" className="content-section">
+            <div aria-label="マイページ表示" className="tabs" role="tablist">
+              <button aria-selected={view === "reports"} onClick={() => setView("reports")} role="tab" type="button">自分の日報</button>
+              <button aria-selected={view === "ranking"} onClick={() => setView("ranking")} role="tab" type="button">Log Ranking</button>
+            </div>
+            {view === "ranking" ? <><LogRankingCard ranking={ranking} /><div className="section-heading"><h2>チーム順位</h2></div><LogRankingList entries={rankings} /></> : <>
             <div className="section-heading">
               <div>
                 <h2 id="my-reports-heading">自分の日報</h2>
@@ -107,6 +118,7 @@ export function MyScreen() {
                 />
               )}
             </div>
+            </>}
           </section>
 
           <footer className="account-footer">

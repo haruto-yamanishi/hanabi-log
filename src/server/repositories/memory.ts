@@ -406,6 +406,11 @@ export class MemoryReportRepository implements ReportRepository {
     return { rank: scores.findIndex((item) => item.id === memberId) + 1, memberCount: scores.length, score, publishedReports, likesReceived, commentsReceived: 0, commentsMade, currentStreak: 0 };
   }
 
+  async listLogRankings(): Promise<{ member: Member; ranking: LogRanking }[]> {
+    const rows = await Promise.all([...state().members.values()].map(async (member) => ({ member: clone(member), ranking: await this.getLogRanking(member.id) })));
+    return rows.sort((left, right) => left.ranking.rank - right.ranking.rank);
+  }
+
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {
     const cursor = filters.cursor ? decodeReportCursor(filters.cursor) : null;
     if (filters.cursor && !cursor) {

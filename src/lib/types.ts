@@ -217,6 +217,11 @@ export interface LogRanking {
   currentStreak: number;
 }
 
+export interface LogRankingEntry {
+  member: PublicMember;
+  ranking: LogRanking;
+}
+
 export interface OutboxJob {
   id: string;
   reportId: string;

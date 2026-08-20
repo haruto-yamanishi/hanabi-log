@@ -104,6 +104,7 @@ export interface ReportRepository extends OutboxRepository {
   recordContributionEvents(events: ContributionEventInput[]): Promise<void>;
   getContributionSummary(memberId: string, from: Date, to: Date): Promise<ContributionSummary>;
   getLogRanking(memberId: string): Promise<LogRanking>;
+  listLogRankings(): Promise<{ member: Member; ranking: LogRanking }[]>;
   listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage>;
   getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null>;
   setReportLike(

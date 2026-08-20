@@ -1128,6 +1128,7 @@ strong {
 .log-ranking .section-heading h2 { font-size: 28px; margin: 0; }.log-ranking .section-heading h2 span { color: #aeb9c8; font-size: 13px; }
 .log-ranking .section-heading > strong { color: #eab548; font-size: 30px; }.log-ranking strong small, .log-ranking dd small { font-size: 11px; margin-left: 3px; }
 .log-ranking dl { display: grid; gap: 1px; grid-template-columns: repeat(5, 1fr); margin: 0; }.log-ranking dl > div { background: rgba(255,255,255,.08); padding: 12px; }.log-ranking dt { color: #aeb9c8; font-size: 10px; }.log-ranking dd { font-size: 20px; font-weight: 800; margin: 5px 0 0; }
+.ranking-list { border-top: 2px solid var(--navy); list-style: none; margin: 0; padding: 0; }.ranking-list li { align-items: center; border-bottom: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: 42px 1fr auto; min-height: 62px; padding: 8px 4px; }.ranking-list__rank { color: var(--hanabi); font-size: 16px; font-weight: 800; }.ranking-list a { align-items: center; color: inherit; display: flex; gap: 9px; text-decoration: none; }.ranking-list li > span:last-child { font-size: 13px; font-weight: 800; }
 
 @media (max-width: 700px) { .log-ranking dl { grid-template-columns: repeat(2, 1fr); }.log-ranking dl > div:last-child { grid-column: 1 / -1; } }
 
