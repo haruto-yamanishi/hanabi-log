@@ -1,0 +1,70 @@
+name: 不具合報告
+description: Hanabi LOGで発生している不具合を報告します
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。再現できる情報をできるだけ具体的に記載してください。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題の概要
+      description: 何が起きていますか？
+      placeholder: 例）ホーム画面で最新の日報が一番上に表示されない
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 問題を再現する手順を書いてください。
+      placeholder: |
+        1. ホームを開く
+        2. 日報を投稿する
+        3. 一覧を確認する
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作
+      description: 本来どうなるべきですか？
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      description: 実際にはどうなりましたか？
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 環境
+      description: OS・ブラウザ・端末など、分かる範囲で記載してください。
+      placeholder: macOS / Chrome など
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 補足
+      description: スクリーンショット、ログ、関連Issueなどがあれば記載してください。秘密情報は貼らないでください。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 確認
+      options:
+        - label: 既存Issueに同じ内容がないことを確認しました
+          required: true
+        - label: APIキー・token・個人情報などの秘密情報を含めていません
+          required: true
