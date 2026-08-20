@@ -83,7 +83,12 @@ export const authOptions: NextAuthOptions = {
         SlackProvider({
           clientId: env.SLACK_CLIENT_ID ?? "",
           clientSecret: env.SLACK_CLIENT_SECRET ?? "",
-          authorization: { params: { scope: "openid profile email" } },
+          authorization: {
+            params: {
+              scope: "openid profile email",
+              team: expectedTeamId,
+            },
+          },
           checks: ["state", "nonce"],
           profile(profile) {
             return {
