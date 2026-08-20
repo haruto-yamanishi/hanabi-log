@@ -1,4 +1,4 @@
-import { WebClient } from "@slack/web-api";
+import { WebClient, type ChatPostMessageArguments } from "@slack/web-api";
 
 import type { IntegrationBinding, Report } from "@/lib/types";
 import {
@@ -16,6 +16,11 @@ export interface SlackMessagePayload {
 
 export interface SlackPostMessageInput extends SlackMessagePayload {
   channel: string;
+  threadTs?: string;
+  metadata?: {
+    eventType: string;
+    eventPayload: Record<string, string>;
+  };
 }
 
 export interface SlackUpdateMessageInput extends SlackMessagePayload {
@@ -45,6 +50,7 @@ export interface SlackSyncResult {
   permalink: string | null;
   operation: "posted" | "updated";
   permalinkFailure?: IntegrationFailure;
+  followupFailure?: IntegrationFailure;
 }
 
 export interface SlackReportIntegration {
@@ -53,6 +59,7 @@ export interface SlackReportIntegration {
 }
 
 export type PrepareSlackReport = (report: Report) => Promise<Report>;
+export const SLACK_FULL_REPORT_EVENT_TYPE = "hanabi_log_full_report";
 
 const ACTIVITY_EMOJI: Record<Report["activityArea"], string> = {
   ロボット: "🤖",
@@ -86,6 +93,51 @@ function authorAttribution(report: Report): string {
       ? `<@${slackUserId}>`
       : escapeMrkdwn(report.author.displayName);
   return `Written by ${author}`;
+}
+
+function splitSlackText(value: string, maximum = 2_800): string[] {
+  const chunks: string[] = [];
+  let rest = value.trim();
+  while (rest.length > maximum) {
+    const newline = rest.lastIndexOf("\n", maximum);
+    const splitAt = newline > maximum / 2 ? newline : maximum;
+    chunks.push(rest.slice(0, splitAt));
+    rest = rest.slice(splitAt).trimStart();
+  }
+  if (rest) chunks.push(rest);
+  return chunks;
+}
+
+export function needsFullSlackThread(report: Report): boolean {
+  return report.activityText.trim() !== report.summary.trim()
+    || Boolean(report.learningText.trim())
+    || Boolean(report.issueText.trim())
+    || Boolean(report.nextActionText.trim());
+}
+
+export function renderSlackFullReport(report: Report): SlackMessagePayload {
+  const sections = [
+    ["今日やったこと", report.activityText],
+    ["判断・学び", report.learningText],
+    ["課題・相談", report.issueText],
+    ["次のアクション", report.nextActionText],
+  ].filter((entry) => entry[1].trim());
+  const blocks: SlackBlock[] = [];
+  for (const [label, body] of sections) {
+    splitSlackText(body).forEach((chunk, index) => {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${index === 0 ? `*${label}*\n` : ""}${escapeMrkdwn(chunk)}`,
+        },
+      });
+    });
+  }
+  return {
+    text: `日報全文: ${report.title}`,
+    blocks,
+  };
 }
 
 export function renderSlackReport(
@@ -217,11 +269,18 @@ export class SlackReportService implements SlackReportIntegration {
         ts: existingTs,
         ...message,
       });
+      const retryFullThread = binding?.slackStatus === "partial"
+        && binding.slackLastError?.includes("SLACK_FULL_REPORT_THREAD_FAILED")
+        && needsFullSlackThread(preparedReport);
+      const followupFailure = retryFullThread
+        ? await this.postFullReportThread(preparedReport, existingChannel, existingTs)
+        : undefined;
       return this.resolvePermalink({
         channelId: existingChannel,
         messageTs: existingTs,
         operation: "updated",
         fallbackPermalink: binding?.slackPermalink,
+        followupFailure,
       });
     }
 
@@ -229,11 +288,40 @@ export class SlackReportService implements SlackReportIntegration {
       channel: this.channelId,
       ...message,
     });
+    const followupFailure = needsFullSlackThread(preparedReport)
+      ? await this.postFullReportThread(preparedReport, posted.channel, posted.ts)
+      : undefined;
     return this.resolvePermalink({
       channelId: posted.channel,
       messageTs: posted.ts,
       operation: "posted",
+      followupFailure,
     });
+  }
+
+  private async postFullReportThread(
+    report: Report,
+    channel: string,
+    threadTs: string,
+  ): Promise<IntegrationFailure | undefined> {
+    try {
+      await this.api.postMessage({
+        channel,
+        threadTs,
+        metadata: {
+          eventType: SLACK_FULL_REPORT_EVENT_TYPE,
+          eventPayload: { report_id: report.id },
+        },
+        ...renderSlackFullReport(report),
+      });
+      return undefined;
+    } catch (error) {
+      const failure = toIntegrationFailure("slack", error);
+      return {
+        ...failure,
+        code: "SLACK_FULL_REPORT_THREAD_FAILED",
+      };
+    }
   }
 
   async remove(binding: IntegrationBinding | null): Promise<void> {
@@ -249,6 +337,7 @@ export class SlackReportService implements SlackReportIntegration {
     messageTs: string;
     operation: SlackSyncResult["operation"];
     fallbackPermalink?: string | null;
+    followupFailure?: IntegrationFailure;
   }): Promise<SlackSyncResult> {
     try {
       const permalink = await this.api.getPermalink({
@@ -307,7 +396,19 @@ export class SlackWebApiAdapter implements SlackApiPort {
     input: SlackPostMessageInput,
   ): Promise<{ channel: string; ts: string }> {
     return this.enqueueWrite(async () => {
-      const result = await this.client.chat.postMessage(input);
+      const payload = {
+        channel: input.channel,
+        text: input.text,
+        blocks: input.blocks,
+        thread_ts: input.threadTs,
+        metadata: input.metadata
+          ? {
+              event_type: input.metadata.eventType,
+              event_payload: input.metadata.eventPayload,
+            }
+          : undefined,
+      } as ChatPostMessageArguments;
+      const result = await this.client.chat.postMessage(payload);
       if (!result.channel || !result.ts) {
         throw new IntegrationError("RESPONSE_MISSING_MESSAGE_ID", {
           retryable: true,

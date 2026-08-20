@@ -127,4 +127,21 @@ describe("SlackCommentService", () => {
     });
     expect(client.listReplies).not.toHaveBeenCalled();
   });
+
+  it("does not expose the automatic full-report thread as a user comment", async () => {
+    const client = api();
+    vi.mocked(client.listReplies).mockResolvedValue([{
+      ts: "1750000000.100",
+      text: "日報全文: テスト",
+      botName: "Hanabi Log",
+      metadata: {
+        eventType: "hanabi_log_full_report",
+        eventPayload: { report_id: "report-1" },
+      },
+    }]);
+    const service = new SlackCommentService(client);
+
+    await expect(service.list({ channel: "C1", threadTs: "100.1", members: [] }))
+      .resolves.toEqual([]);
+  });
 });

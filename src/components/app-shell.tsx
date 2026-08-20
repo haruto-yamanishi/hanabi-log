@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useSyncExternalStore } from "react";
 import type { CurrentUser } from "@/lib/types";
-import { ArrowLeftIcon, ArrowRightIcon, HomeIcon, PlusIcon, SearchIcon, SettingsIcon, UserIcon } from "@/components/icons";
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, HomeIcon, PlusIcon, SearchIcon, SettingsIcon, UserIcon } from "@/components/icons";
 import { HanabiMark } from "@/components/logo";
 import { Avatar } from "@/components/ui";
 
@@ -40,6 +40,7 @@ function getServerSidebarSnapshot() {
 
 const navigation = [
   { href: "/", label: "ホーム", icon: HomeIcon, exact: true },
+  { href: "/calendar", label: "カレンダー", icon: CalendarIcon, exact: false },
   { href: "/archive", label: "アーカイブ", icon: SearchIcon, exact: false },
   { href: "/me", label: "マイページ", icon: UserIcon, exact: false },
 ] as const;
@@ -140,13 +141,17 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
           <HomeIcon />
           <span>ホーム</span>
         </Link>
-        <Link aria-current={isActive(pathname, "/archive") ? "page" : undefined} href="/archive">
-          <SearchIcon />
-          <span>さがす</span>
+        <Link aria-current={isActive(pathname, "/calendar") ? "page" : undefined} href="/calendar">
+          <CalendarIcon />
+          <span>カレンダー</span>
         </Link>
         <Link aria-current={isActive(pathname, "/reports/new") ? "page" : undefined} className="bottom-nav__create" href="/reports/new">
           <span><PlusIcon /></span>
           <small>書く</small>
+        </Link>
+        <Link aria-current={isActive(pathname, "/archive") ? "page" : undefined} href="/archive">
+          <SearchIcon />
+          <span>さがす</span>
         </Link>
         <Link aria-current={isActive(pathname, "/me") ? "page" : undefined} href="/me">
           <UserIcon />

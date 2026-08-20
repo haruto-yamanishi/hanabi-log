@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { IntegrationBinding, Report } from "@/lib/types";
 import {
+  needsFullSlackThread,
+  renderSlackFullReport,
   renderSlackReport,
   SlackReportService,
   type SlackApiPort,
@@ -47,6 +49,29 @@ describe("renderSlackReport", () => {
     expect(JSON.stringify(payload.blocks)).toContain(
       "https://log.example.test/reports/report-1",
     );
+  });
+
+  it("renders the complete body for a Slack thread when the card is abbreviated", () => {
+    const input = report({
+      activityText: `作業内容${"A".repeat(3_100)}`,
+      learningText: "判断したこと",
+    });
+    expect(needsFullSlackThread(input)).toBe(true);
+    const payload = renderSlackFullReport(input);
+    expect(payload.text).toBe("日報全文: CNCなしで作れる設計へ");
+    expect(payload.blocks.length).toBeGreaterThan(2);
+    expect(JSON.stringify(payload.blocks)).toContain("判断したこと");
+  });
+
+  it("does not need a thread when the card contains the whole body", () => {
+    const input = report({
+      summary: "短い作業内容",
+      activityText: "短い作業内容",
+      learningText: "",
+      issueText: "",
+      nextActionText: "",
+    });
+    expect(needsFullSlackThread(input)).toBe(false);
   });
 
   it("falls back to escaped display text for an invalid Slack user ID", () => {
@@ -120,7 +145,7 @@ describe("SlackReportService", () => {
     };
   }
 
-  it("posts once and resolves the permalink for an unbound report", async () => {
+  it("posts the card and complete body thread, then resolves the root permalink", async () => {
     const client = api();
     const service = new SlackReportService(
       client,
@@ -130,13 +155,76 @@ describe("SlackReportService", () => {
 
     const result = await service.sync(report(), null);
 
-    expect(client.postMessage).toHaveBeenCalledOnce();
+    expect(client.postMessage).toHaveBeenCalledTimes(2);
+    expect(client.postMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      channel: "C1",
+      threadTs: "100.1",
+      text: "日報全文: CNCなしで作れる設計へ",
+      metadata: {
+        eventType: "hanabi_log_full_report",
+        eventPayload: { report_id: "report-1" },
+      },
+    }));
     expect(client.updateMessage).not.toHaveBeenCalled();
     expect(client.getPermalink).toHaveBeenCalledWith({
       channel: "C1",
       messageTs: "100.1",
     });
     expect(result.operation).toBe("posted");
+  });
+
+  it("does not create an unnecessary thread for a short complete body", async () => {
+    const client = api();
+    const service = new SlackReportService(client, "C1", "https://log.example.test");
+    await service.sync(report({
+      summary: "短い作業内容",
+      activityText: "短い作業内容",
+      learningText: "",
+      issueText: "",
+      nextActionText: "",
+    }), null);
+    expect(client.postMessage).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the root message binding and reports a retryable thread failure", async () => {
+    const client = api();
+    vi.mocked(client.postMessage)
+      .mockResolvedValueOnce({ channel: "C1", ts: "100.1" })
+      .mockRejectedValueOnce({ statusCode: 503, code: "service_unavailable" });
+    const service = new SlackReportService(client, "C1", "https://log.example.test");
+
+    const result = await service.sync(report(), null);
+
+    expect(result).toMatchObject({
+      channelId: "C1",
+      messageTs: "100.1",
+      followupFailure: {
+        code: "SLACK_FULL_REPORT_THREAD_FAILED",
+        retryable: true,
+        statusCode: 503,
+      },
+    });
+  });
+
+  it("retries only the missing full-body thread for a partial binding", async () => {
+    const client = api();
+    const service = new SlackReportService(client, "C-new", "https://log.example.test");
+    await service.sync(report(), {
+      reportId: "report-1",
+      notionStatus: "pending",
+      slackStatus: "partial",
+      slackChannelId: "C-existing",
+      slackMessageTs: "200.2",
+      slackPermalink: "https://slack.test/archives/C-existing/p2002",
+      slackLastError: "SLACK_FULL_REPORT_THREAD_FAILED:503",
+      updatedAt: "2026-08-19T00:00:00.000Z",
+    });
+
+    expect(client.updateMessage).toHaveBeenCalledOnce();
+    expect(client.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: "C-existing",
+      threadTs: "200.2",
+    }));
   });
 
   it("prepares private attachment URLs before posting", async () => {

@@ -7,6 +7,7 @@ import type {
   ReportCommentAuthor,
 } from "@/lib/types";
 import { IntegrationError } from "@/server/integrations/errors";
+import { SLACK_FULL_REPORT_EVENT_TYPE } from "@/server/integrations/slack";
 
 const WEB_COMMENT_EVENT = "hanabi_log_web_comment";
 const MAX_REPLIES = 500;
@@ -104,7 +105,7 @@ export class SlackCommentService {
     );
     const unresolvedIds = new Set<string>();
     for (const reply of replies) {
-      if (reply.metadata?.eventType === WEB_COMMENT_EVENT) continue;
+      if (reply.metadata?.eventType === WEB_COMMENT_EVENT || reply.metadata?.eventType === SLACK_FULL_REPORT_EVENT_TYPE) continue;
       if (reply.userId && !memberBySlackId.has(reply.userId)) {
         unresolvedIds.add(reply.userId);
       }
@@ -123,6 +124,7 @@ export class SlackCommentService {
     });
 
     return replies.flatMap((reply): ReportComment[] => {
+      if (reply.metadata?.eventType === SLACK_FULL_REPORT_EVENT_TYPE) return [];
       const fromWeb = reply.metadata?.eventType === WEB_COMMENT_EVENT;
       const body = fromWeb
         ? webCommentBody(reply)

@@ -177,15 +177,15 @@ function currentBinding(
       slack?.result?.permalink ?? original?.slackPermalink ?? null,
     slackStatus: slack?.failure
       ? "failed"
-      : slack?.result?.permalinkFailure
+      : slack?.result?.followupFailure || slack?.result?.permalinkFailure
         ? "partial"
       : slack?.result
         ? "delivered"
         : (original?.slackStatus ?? "pending"),
     slackLastError: slack?.failure
       ? formatPersistedFailure(slack.failure)
-      : slack?.result?.permalinkFailure
-        ? formatPersistedFailure(slack.result.permalinkFailure)
+      : slack?.result?.followupFailure || slack?.result?.permalinkFailure
+        ? formatPersistedFailure(slack.result.followupFailure ?? slack.result.permalinkFailure!)
       : null,
     updatedAt,
   };
@@ -337,24 +337,25 @@ export function createOutboxProcessor(
           }
 
           const result = slackOutcome.result as SlackSyncResult;
-          if (result.permalinkFailure) {
+          const partialFailure = result.followupFailure ?? result.permalinkFailure;
+          if (partialFailure) {
             const decision = decideOutboxRetry(
               slackJob.attempts,
               timestamp,
-              result.permalinkFailure,
+              partialFailure,
             );
             await dependencies.repository.retryJob(slackJob.id, {
               attempts: decision.attempts,
               status: decision.status,
               availableAt: decision.availableAt,
-              errorCode: formatPersistedFailure(result.permalinkFailure),
+              errorCode: formatPersistedFailure(partialFailure),
             });
             await dependencies.repository.saveSlackBinding(reportId, {
               channelId: result.channelId,
               messageTs: result.messageTs,
               permalink: result.permalink ?? binding?.slackPermalink,
               status: "partial",
-              errorCode: formatPersistedFailure(result.permalinkFailure),
+              errorCode: formatPersistedFailure(partialFailure),
             });
             summary.partial += 1;
             if (decision.status === "dead") summary.dead += 1;

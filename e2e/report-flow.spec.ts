@@ -27,10 +27,52 @@ test("PCサイドバーを折りたたみ、状態を保存できる", async ({ 
   await expect(page.getByRole("button", { name: "メニューを開く" })).toBeVisible();
   await expect(shell).toHaveClass(/app-shell--sidebar-collapsed/);
   await expect(sidebar).toHaveClass(/sidebar--collapsed/);
+  await expect(sidebar).toHaveCSS("width", "56px");
+  await expect(sidebar.locator(".brand__image")).toBeHidden();
 
   await page.reload();
   await expect(page.getByRole("button", { name: "メニューを開く" })).toBeVisible();
   await expect(shell).toHaveClass(/app-shell--sidebar-collapsed/);
+});
+
+test("スマホヘッダーのロゴ周辺に余白があり、マイページの状態表示が四角い", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "スマホ表示の確認");
+
+  await page.goto("/me");
+  const logo = page.locator(".mobile-header .brand__image");
+  const box = await logo.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(18);
+  await expect(page.locator(".member-activity-badge")).toHaveCSS("border-radius", "0px");
+});
+
+test("カレンダーで投稿日の件数と日報を確認し、前後月へ移動できる", async ({ page }) => {
+  const uniqueTitle = `E2E カレンダー ${Date.now()}`;
+
+  await page.goto("/reports/new");
+  await page.getByLabel("タイトル任意").fill(uniqueTitle);
+  await page.getByLabel("活動領域必須").selectOption({ label: "事務局" });
+  await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
+  await page.getByLabel("今日やったこと必須").fill("カレンダーから日付ごとの日報を確認した。");
+  await page.getByRole("button", { name: "公開する" }).click();
+  await expect(page).toHaveURL(/\/reports\/[^/?]+\?published=1$/, { timeout: navigationTimeout });
+  const reportId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const response = await page.request.get(`/api/reports/${reportId}`);
+  const report = await response.json() as { reportDate: string };
+
+  await page.goto(`/calendar?month=${report.reportDate.slice(0, 7)}&date=${report.reportDate}`);
+  await expect(page.getByRole("heading", { name: "カレンダー", exact: true })).toBeVisible();
+  await expect(page.getByRole("gridcell", { name: new RegExp(`${Number(report.reportDate.slice(-2))}日、\\d+件`) })).toBeVisible();
+  await expect(page.getByRole("heading", { name: uniqueTitle })).toBeVisible();
+
+  await page.getByLabel("活動領域").selectOption({ label: "事務局" });
+  await expect(page.getByRole("heading", { name: uniqueTitle })).toBeVisible();
+  const monthHeading = page.locator("#calendar-month-heading");
+  const currentMonth = await monthHeading.textContent();
+  await page.getByRole("button", { name: "前月" }).click();
+  await expect(monthHeading).not.toHaveText(currentMonth ?? "");
+  await page.getByRole("button", { name: "翌月" }).click();
+  await expect(monthHeading).toHaveText(currentMonth ?? "");
 });
 
 test("日報を下書き保存・公開し、検索から詳細を開ける", async ({ page }, testInfo) => {
@@ -40,7 +82,7 @@ test("日報を下書き保存・公開し、検索から詳細を開ける", as
 
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await page.locator("main").getByRole("link", { name: "日報を書く", exact: true }).click();
+  await page.locator(".home-hero__action").click();
 
   await expect(page.getByRole("heading", { name: "今日を記録する" })).toBeVisible({ timeout: navigationTimeout });
   await page.getByLabel("タイトル任意").fill(uniqueTitle);
