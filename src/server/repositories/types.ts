@@ -1,5 +1,6 @@
 import type { DeliveryStatus, DeliveryTarget } from "@/lib/constants";
 import type {
+  ContributionSummary,
   CurrentUser,
   IntegrationBinding,
   Member,
@@ -10,6 +11,13 @@ import type {
   ReportLikeSummary,
   ReportPage,
 } from "@/lib/types";
+
+export interface ContributionEventInput {
+  memberId: string;
+  occurredAt: string;
+  kind: "report" | "comment";
+  eventKey: string;
+}
 
 export interface MemberUpsertInput {
   slackTeamId: string;
@@ -91,6 +99,8 @@ export interface ReportRepository extends OutboxRepository {
   setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null>;
   setMemberActivity(memberId: string, isActive: boolean): Promise<Member | null>;
   deleteMember(memberId: string): Promise<DeleteMemberResult>;
+  recordContributionEvents(events: ContributionEventInput[]): Promise<void>;
+  getContributionSummary(memberId: string, from: Date, to: Date): Promise<ContributionSummary>;
   listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage>;
   getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null>;
   setReportLike(

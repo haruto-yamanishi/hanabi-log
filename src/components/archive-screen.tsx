@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS } from "@/lib/constants";
-import type { PublicMember, Report, ReportPage } from "@/lib/types";
+import type { PublicMember, ReportListItem, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
 import { FilterIcon, SearchIcon, XIcon } from "@/components/icons";
 import { ReportCard } from "@/components/report-card";
@@ -55,7 +55,7 @@ const filterLabels: Record<keyof SearchFilters, string> = {
 export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParams?: ArchiveSearchParams }) {
   const [form, setForm] = useState<SearchFilters>(() => filtersFromSearchParams(initialSearchParams));
   const [filters, setFilters] = useState<SearchFilters>(() => filtersFromSearchParams(initialSearchParams));
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<ReportListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);

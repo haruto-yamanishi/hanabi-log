@@ -3,7 +3,7 @@ import {
   apiResponse,
   assertOwnedAttachments,
   idempotencyKey,
-  publicReport,
+  publicReportListItem,
   reportResponse,
   requestJson,
 } from "@/app/api/_shared";
@@ -22,7 +22,7 @@ export async function GET(request: Request): Promise<Response> {
     });
     const page = await getReportRepository().listReports(filters, user);
     return Response.json(
-      { ...page, reports: page.reports.map(publicReport) },
+      { ...page, reports: page.reports.map(publicReportListItem) },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   });

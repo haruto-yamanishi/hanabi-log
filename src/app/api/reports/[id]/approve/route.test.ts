@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
   approveReport: vi.fn(),
   getReadableReport: vi.fn(),
-  processReportJobs: vi.fn(),
 }));
 
 vi.mock("@/server/auth", () => ({ requireCurrentUser: mocks.requireCurrentUser }));
@@ -17,7 +16,6 @@ vi.mock("@/server/repositories", () => ({
     getReadableReport: mocks.getReadableReport,
   }),
 }));
-vi.mock("@/server/integrations/outbox", () => ({ processReportJobs: mocks.processReportJobs }));
 vi.mock("@/server/db/storage", () => ({ signReportAttachments: (report: Report) => report }));
 
 import { POST } from "./route";
@@ -60,7 +58,7 @@ describe("POST /api/reports/:id/approve", () => {
     mocks.getReadableReport.mockResolvedValue(approved);
   });
 
-  it("approves a pending report and starts Slack/Notion delivery", async () => {
+  it("approves a pending report and leaves delivery to the Outbox worker", async () => {
     const response = await POST(
       new Request(`https://hanabi.test/api/reports/${approved.id}/approve`, { method: "POST" }),
       { params: Promise.resolve({ id: approved.id }) },
@@ -68,6 +66,5 @@ describe("POST /api/reports/:id/approve", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.approveReport).toHaveBeenCalledWith(approved.id, admin);
-    expect(mocks.processReportJobs).toHaveBeenCalledWith(approved.id);
   });
 });

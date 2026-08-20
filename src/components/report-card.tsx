@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Report, ReportLikeSummary } from "@/lib/types";
+import type { ReportLikeSummary, ReportListItem } from "@/lib/types";
 import { ArrowRightIcon, CalendarIcon, HeartIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
 import { activityAreaClassName } from "@/lib/constants";
@@ -50,11 +50,11 @@ export function formatPublishedDateTime(value: string): string {
   return `${values.month}月${values.day}日 ${values.hour}時${values.minute}分`;
 }
 
-export function StatusBadge({ status }: { status: Report["status"] }) {
+export function StatusBadge({ status }: { status: ReportListItem["status"] }) {
   return <span className={`status-badge status-badge--${status}`}>{STATUS_LABELS[status]}</span>;
 }
 
-export function ReportCard({ report, showStatus = false }: { report: Report; showStatus?: boolean }) {
+export function ReportCard({ report, showStatus = false }: { report: ReportListItem; showStatus?: boolean }) {
   const [liked, setLiked] = useState(report.likedByCurrentUser ?? false);
   const [likeCount, setLikeCount] = useState(report.likeCount ?? 0);
   const [liking, setLiking] = useState(false);
@@ -82,7 +82,7 @@ export function ReportCard({ report, showStatus = false }: { report: Report; sho
 
   return (
     <article className={`report-card ${activityAreaClassName(report.activityArea)}`}>
-      <Link aria-label={`${report.title}を読む`} className="report-card__link" href={`/reports/${report.id}`}>
+      <Link aria-label={`${report.title}を読む`} className="report-card__link" href={`/reports/${report.id}`} prefetch={false}>
         <div className="report-card__topline">
           <div className="badge-row">
             <span className="category-badge category-badge--area">{report.activityArea}</span>

@@ -11,6 +11,8 @@ import type {
   ReportFilters,
   ReportInput,
   ReportLikeSummary,
+  ReportListItem,
+  ContributionSummary,
   ReportPage,
 } from "@/lib/types";
 import { canEditReport, canReadReport } from "@/lib/authorization";
@@ -25,6 +27,7 @@ import type {
   ClaimJobsOptions,
   EnqueueIntegrationRetryInput,
   MemberUpsertInput,
+  ContributionEventInput,
   ReportRepository,
   RetryJobInput,
   SaveNotionBindingInput,
@@ -40,12 +43,36 @@ interface MemoryState {
   weeklyDigests: Map<string, { status: "processing" | "delivered" | "failed"; updatedAt: string }>;
   jobs: Map<string, OutboxJob>;
   idempotency: Map<string, string>;
+  contributions: Map<string, ContributionEventInput>;
 }
 
 const DEMO_MEMBER_ID = "00000000-0000-4000-8000-000000000001";
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function reportListItem(report: Report, actorId?: string): ReportListItem {
+  const full = reportWithLikes(report, actorId);
+  return {
+    id: full.id,
+    authorId: full.authorId,
+    author: full.author,
+    reportDate: full.reportDate,
+    title: full.title,
+    summary: full.summary,
+    activityArea: full.activityArea,
+    contentCategory: full.contentCategory,
+    themeTags: full.themeTags,
+    status: full.status,
+    publishedAt: full.publishedAt,
+    createdAt: full.createdAt,
+    updatedAt: full.updatedAt,
+    integration: full.integration,
+    likeCount: full.likeCount,
+    likedByCurrentUser: full.likedByCurrentUser,
+    likedBy: full.likedBy,
+  };
 }
 
 function initialState(): MemoryState {
@@ -158,6 +185,12 @@ function initialState(): MemoryState {
     weeklyDigests: new Map(),
     jobs: new Map(),
     idempotency: new Map(),
+    contributions: new Map(samples.map((report) => [`report:${report.id}`, {
+      memberId: report.authorId,
+      occurredAt: report.publishedAt ?? report.createdAt,
+      kind: "report" as const,
+      eventKey: `report:${report.id}`,
+    }])),
   };
 }
 
@@ -347,6 +380,22 @@ export class MemoryReportRepository implements ReportRepository {
     return "deleted";
   }
 
+  async recordContributionEvents(events: ContributionEventInput[]): Promise<void> {
+    for (const event of events) state().contributions.set(event.eventKey, { ...event });
+  }
+
+  async getContributionSummary(memberId: string, from: Date, to: Date): Promise<ContributionSummary> {
+    const days = new Map<string, number>();
+    for (const event of state().contributions.values()) {
+      const occurredAt = new Date(event.occurredAt);
+      if (event.memberId !== memberId || occurredAt < from || occurredAt >= to) continue;
+      const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(occurredAt);
+      days.set(date, (days.get(date) ?? 0) + 1);
+    }
+    const result = [...days].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
+    return { total: result.reduce((total, day) => total + day.count, 0), days: result };
+  }
+
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {
     const cursor = filters.cursor ? decodeReportCursor(filters.cursor) : null;
     if (filters.cursor && !cursor) {
@@ -392,7 +441,7 @@ export class MemoryReportRepository implements ReportRepository {
     const page = reports.slice(0, limit);
     const last = page.at(-1);
     return {
-      reports: page.map((report) => reportWithLikes(report, actor.id)),
+      reports: page.map((report) => reportListItem(report, actor.id)),
       nextCursor:
         reports.length > page.length && last
           ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id)
@@ -574,6 +623,9 @@ export class MemoryReportRepository implements ReportRepository {
       report.version += 1;
       report.updatedAt = now;
       if (publishImmediately) putJobs(report, "publish");
+      if (publishImmediately) state().contributions.set(`report:${report.id}`, {
+        memberId: report.authorId, occurredAt: now, kind: "report", eventKey: `report:${report.id}`,
+      });
     }
     if (idempotencyKey) {
       state().idempotency.set(
@@ -599,6 +651,9 @@ export class MemoryReportRepository implements ReportRepository {
     report.version += 1;
     report.updatedAt = now;
     putJobs(report, "publish");
+    state().contributions.set(`report:${report.id}`, {
+      memberId: report.authorId, occurredAt: now, kind: "report", eventKey: `report:${report.id}`,
+    });
     return clone(report);
   }
 

@@ -8,7 +8,6 @@ import {
   requestJson,
 } from "@/app/api/_shared";
 import { requireCurrentUser } from "@/server/auth";
-import { processReportJobs } from "@/server/integrations/outbox";
 import { getReportRepository } from "@/server/repositories";
 import { resolveReportTitle } from "@/lib/report-title";
 import { AppError } from "@/server/errors";
@@ -43,16 +42,12 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
       },
     };
     assertOwnedAttachments(user, input.report, [existing.authorId]);
-    let report = await getReportRepository().patchReport(
+    const report = await getReportRepository().patchReport(
       id,
       user,
       input.version,
       input.report,
     );
-    if (report.status === "published") {
-      await processReportJobs(id);
-      report = (await getReportRepository().getReadableReport(id, user)) ?? report;
-    }
     return reportResponse(report, request);
   });
 }

@@ -3,6 +3,7 @@ import type {
   CurrentUser,
   IntegrationBinding,
   Report,
+  ReportListItem,
   ReportInput,
 } from "@/lib/types";
 import { errorResponse, AppError } from "@/server/errors";
@@ -90,6 +91,30 @@ export function publicReport(report: Report): Report {
       } satisfies IntegrationBinding)
     : report.integration;
   return { ...report, author, integration };
+}
+
+/** List endpoints intentionally omit body/attachment data and provider identifiers. */
+export function publicReportListItem(report: ReportListItem): ReportListItem {
+  return {
+    ...report,
+    author: {
+      id: report.author.id,
+      displayName: report.author.displayName,
+      avatarUrl: report.author.avatarUrl ?? null,
+    },
+    integration: report.integration
+      ? {
+          reportId: report.integration.reportId,
+          notionPageUrl: report.integration.notionPageUrl ?? null,
+          notionStatus: report.integration.notionStatus,
+          notionLastError: report.integration.notionLastError ?? null,
+          slackPermalink: report.integration.slackPermalink ?? null,
+          slackStatus: report.integration.slackStatus,
+          slackLastError: report.integration.slackLastError ?? null,
+          updatedAt: report.integration.updatedAt,
+        }
+      : report.integration,
+  };
 }
 
 export function notFound(): never {

@@ -11,6 +11,7 @@ import type {
   ReportFilters,
   ReportInput,
   ReportLiker,
+  ReportListItem,
   ReportPage,
 } from "@/lib/types";
 import { getDatabase } from "@/server/db/client";
@@ -39,6 +40,7 @@ import type {
   DeleteMemberResult,
   EnqueueIntegrationRetryInput,
   MemberUpsertInput,
+  ContributionEventInput,
   ReportRepository,
   RetryJobInput,
   SaveNotionBindingInput,
@@ -83,6 +85,80 @@ function reportColumns(sql: ReturnType<typeof getDatabase>) {
     m.display_name as author_display_name,
     m.avatar_url as author_avatar_url
   `;
+}
+
+function listReportColumns(sql: ReturnType<typeof getDatabase>) {
+  return sql`
+    r.id, r.author_id, r.report_date, r.title, r.summary,
+    r.activity_area, r.content_category, r.theme_tags, r.status,
+    r.published_at, r.created_at, r.updated_at,
+    m.slack_user_id as author_slack_user_id,
+    m.display_name as author_display_name,
+    m.avatar_url as author_avatar_url
+  `;
+}
+
+interface ListReportRow {
+  id: string;
+  author_id: string;
+  report_date: Date | string;
+  title: string;
+  summary: string | null;
+  activity_area: Report["activityArea"];
+  content_category: Report["contentCategory"];
+  theme_tags: Report["themeTags"];
+  status: Report["status"];
+  published_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  author_slack_user_id: string;
+  author_display_name: string;
+  author_avatar_url: string | null;
+  like_count: number;
+  liked_by_current_user: boolean;
+  notion_page_url: string | null;
+  notion_status: IntegrationBinding["notionStatus"] | null;
+  notion_last_error: string | null;
+  slack_permalink: string | null;
+  slack_status: IntegrationBinding["slackStatus"] | null;
+  slack_last_error: string | null;
+  binding_updated_at: Date | string | null;
+}
+
+function mapListReport(row: ListReportRow): ReportListItem {
+  const iso = (value: Date | string) => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return {
+    id: row.id,
+    authorId: row.author_id,
+    author: {
+      id: row.author_id,
+      slackUserId: row.author_slack_user_id,
+      displayName: row.author_display_name,
+      avatarUrl: row.author_avatar_url,
+    },
+    reportDate: typeof row.report_date === "string" ? row.report_date.slice(0, 10) : row.report_date.toISOString().slice(0, 10),
+    title: row.title,
+    summary: row.summary ?? "",
+    activityArea: row.activity_area,
+    contentCategory: row.content_category,
+    themeTags: row.theme_tags,
+    status: row.status,
+    publishedAt: row.published_at ? iso(row.published_at) : null,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+    likeCount: row.like_count ?? 0,
+    likedByCurrentUser: row.liked_by_current_user ?? false,
+    integration: row.binding_updated_at ? {
+      reportId: row.id,
+      notionPageUrl: row.notion_page_url,
+      notionStatus: row.notion_status ?? "pending",
+      notionLastError: row.notion_last_error,
+      slackPermalink: row.slack_permalink,
+      slackStatus: row.slack_status ?? "pending",
+      slackLastError: row.slack_last_error,
+      updatedAt: iso(row.binding_updated_at),
+    } : null,
+  };
 }
 
 function reportIdFromIdempotency(row: IdempotencyRow | undefined): string | null {
@@ -321,6 +397,29 @@ export class PostgresReportRepository implements ReportRepository {
     return rows.map(mapMember);
   }
 
+  async recordContributionEvents(events: ContributionEventInput[]): Promise<void> {
+    for (const event of events) {
+      await this.sql`
+        insert into member_contribution_events (member_id, occurred_at, kind, event_key)
+        values (${event.memberId}, ${event.occurredAt}::timestamptz, ${event.kind}, ${event.eventKey})
+        on conflict (event_key) do nothing
+      `;
+    }
+  }
+
+  async getContributionSummary(memberId: string, from: Date, to: Date) {
+    const rows = await this.sql<{ date: string; count: number }[]>`
+      select timezone('Asia/Tokyo', occurred_at)::date::text as date, count(*)::int as count
+      from member_contribution_events
+      where member_id = ${memberId}
+        and occurred_at >= ${from}
+        and occurred_at < ${to}
+      group by 1
+      order by 1
+    `;
+    return { total: rows.reduce((sum, row) => sum + row.count, 0), days: rows };
+  }
+
   async setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null> {
     const rows = await this.sql<MemberRow[]>`
       update members
@@ -401,17 +500,28 @@ export class PostgresReportRepository implements ReportRepository {
       conditions[0],
     );
     const limit = filters.limit ?? 20;
-    const rows = await this.sql<ReportRow[]>`
-      select ${reportColumns(this.sql)}
+    const rows = await this.sql<ListReportRow[]>`
+      select ${listReportColumns(this.sql)},
+        coalesce(likes.like_count, 0)::int as like_count,
+        coalesce(likes.liked_by_current_user, false) as liked_by_current_user,
+        binding.notion_page_url, binding.notion_status, binding.notion_last_error,
+        binding.slack_permalink, binding.slack_status, binding.slack_last_error,
+        binding.updated_at as binding_updated_at
       from reports r
       join members m on m.id = r.author_id
+      left join lateral (
+        select count(*)::int as like_count,
+          coalesce(bool_or(member_id = ${actor.id}), false) as liked_by_current_user
+        from report_likes where report_id = r.id
+      ) likes on true
+      left join integration_bindings binding on binding.report_id = r.id
       where ${where}
       order by coalesce(r.published_at, r.updated_at) desc, r.id desc
       limit ${limit + 1}
     `;
     const hasMore = rows.length > limit;
     const pageRows = rows.slice(0, limit);
-    const reports = await this.hydrate(pageRows, actor.id);
+    const reports = pageRows.map(mapListReport);
     const last = reports.at(-1);
     return {
       reports,
@@ -686,6 +796,11 @@ export class PostgresReportRepository implements ReportRepository {
         `;
         if (publishImmediately) {
           await enqueueJobs(tx, reportId, updated[0].version, "publish");
+          await tx`
+            insert into member_contribution_events (member_id, occurred_at, kind, event_key)
+            values (${report.author_id}, now(), 'report', ${`report:${reportId}`})
+            on conflict (event_key) do nothing
+          `;
         }
       }
       if (idempotencyKey) {
@@ -716,6 +831,11 @@ export class PostgresReportRepository implements ReportRepository {
         returning version
       `;
       await enqueueJobs(tx, reportId, updated[0].version, "publish");
+      await tx`
+        insert into member_contribution_events (member_id, occurred_at, kind, event_key)
+        values (${report.author_id}, now(), 'report', ${`report:${reportId}`})
+        on conflict (event_key) do nothing
+      `;
     });
     return (await this.getReport(reportId))!;
   }

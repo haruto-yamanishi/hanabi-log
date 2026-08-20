@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
   getReadableReport: vi.fn(),
   listMembers: vi.fn(),
+  recordContributionEvents: vi.fn(),
   list: vi.fn(),
   post: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock("@/server/repositories", () => ({
   getReportRepository: () => ({
     getReadableReport: mocks.getReadableReport,
     listMembers: mocks.listMembers,
+    recordContributionEvents: mocks.recordContributionEvents,
   }),
 }));
 vi.mock("@/server/integrations/slack-comments", () => ({

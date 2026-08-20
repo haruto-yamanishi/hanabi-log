@@ -59,6 +59,14 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
         ...binding,
         members: await repository.listMembers(),
       });
+      await repository.recordContributionEvents(
+        comments.flatMap((comment) => comment.author.id ? [{
+          memberId: comment.author.id,
+          occurredAt: comment.createdAt,
+          kind: "comment" as const,
+          eventKey: `comment:${id}:${comment.source}:${comment.id}`,
+        }] : []),
+      );
       return Response.json(
         { available: true, comments },
         { headers: { "Cache-Control": "private, no-store" } },
@@ -73,7 +81,8 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   return apiResponse(async () => {
     const actor = await requireCurrentUser();
     const id = reportId((await context.params).id);
-    const report = await getReportRepository().getReadableReport(id, actor);
+    const repository = getReportRepository();
+    const report = await repository.getReadableReport(id, actor);
     if (!report) notFound();
     if (report.status !== "published") {
       throw new AppError("COMMENTS_NOT_AVAILABLE", "公開中の日報にだけコメントできます", 409);
@@ -86,6 +95,12 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
 
     try {
       const comment = await slackConfiguration().post({ ...binding, actor, body });
+      await repository.recordContributionEvents([{
+        memberId: actor.id,
+        occurredAt: comment.createdAt,
+        kind: "comment",
+        eventKey: `comment:${id}:web:${comment.id}`,
+      }]);
       return Response.json(comment, {
         status: 201,
         headers: { "Cache-Control": "private, no-store" },

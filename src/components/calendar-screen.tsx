@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ACTIVITY_AREAS, type ActivityArea } from "@/lib/constants";
 import { calendarCells, formatCalendarMonth, isCalendarMonth, isDateInCalendarMonth, monthBounds, shiftCalendarMonth } from "@/lib/calendar";
 import { formatJstDate, todayInJst } from "@/lib/text";
-import type { Report, ReportPage } from "@/lib/types";
+import type { ReportListItem, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
 import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon } from "@/components/icons";
 import { ReportCard } from "@/components/report-card";
@@ -36,7 +36,7 @@ export function CalendarScreen({ initialSearchParams = {} }: { initialSearchPara
   const [month, setMonth] = useState(initial.month);
   const [selectedDate, setSelectedDate] = useState(initial.date);
   const [activityArea, setActivityArea] = useState<ActivityArea | "">(initial.area);
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<ReportListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const today = todayInJst();
@@ -52,7 +52,7 @@ export function CalendarScreen({ initialSearchParams = {} }: { initialSearchPara
     setError(null);
     try {
       const { dateFrom, dateTo } = monthBounds(month);
-      const loaded: Report[] = [];
+      const loaded: ReportListItem[] = [];
       let cursor: string | null = null;
       do {
         const params = new URLSearchParams({ status: "published", dateFrom, dateTo, limit: "50" });

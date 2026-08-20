@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { requireCurrentUser } from "@/server/auth";
-import { processReportJobs } from "@/server/integrations/outbox";
 import { getReportRepository } from "@/server/repositories";
 
 interface RouteContext {
@@ -16,9 +15,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const parameters = await context.params;
     const id = reportId(parameters.id);
     const target = targetSchema.parse(parameters.target);
-    let report = await getReportRepository().requestIntegrationRetry(id, target, user);
-    await processReportJobs(id);
-    report = (await getReportRepository().getReadableReport(id, user)) ?? report;
+    const report = await getReportRepository().requestIntegrationRetry(id, target, user);
     return reportResponse(report, request);
   });
 }

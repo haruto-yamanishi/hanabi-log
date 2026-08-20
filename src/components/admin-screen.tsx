@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type DeliveryTarget, type ReportStatus } from "@/lib/constants";
-import type { CurrentUser, MemberRole, PublicMember, Report, ReportPage } from "@/lib/types";
+import type { CurrentUser, MemberRole, PublicMember, Report, ReportListItem, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
 import { AlertIcon, ArrowRightIcon, CheckIcon, RefreshIcon, SettingsIcon, TrashIcon, UserIcon } from "@/components/icons";
 import { formatDateTime } from "@/components/report-card";
@@ -14,7 +14,7 @@ type AdminTab = "approvals" | "sync" | "members" | "categories";
 const problemStatuses = new Set(["failed", "dead", "partial"]);
 
 interface SyncIssue {
-  report: Report;
+  report: ReportListItem;
   target: DeliveryTarget;
   status: string;
   error?: string | null;
@@ -44,8 +44,8 @@ function initialNotionNotice(): string | null {
   return null;
 }
 
-async function loadAllReports(status: ReportStatus, signal?: AbortSignal): Promise<Report[]> {
-  const reports: Report[] = [];
+async function loadAllReports(status: ReportStatus, signal?: AbortSignal): Promise<ReportListItem[]> {
+  const reports: ReportListItem[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | null = null;
   do {
@@ -62,7 +62,7 @@ async function loadAllReports(status: ReportStatus, signal?: AbortSignal): Promi
 
 export function AdminScreen() {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<ReportListItem[]>([]);
   const [members, setMembers] = useState<PublicMember[]>([]);
   const [notionConnection, setNotionConnection] = useState<NotionConnectionStatus>({ connected: false });
   const [tab, setTab] = useState<AdminTab>("approvals");
@@ -184,7 +184,7 @@ export function AdminScreen() {
     }
   }
 
-  async function approveReport(report: Report) {
+  async function approveReport(report: ReportListItem) {
     if (!window.confirm(`「${report.title}」を承認して公開しますか？\nSlackとNotionにも配信されます。`)) return;
     setRetrying(`approve-${report.id}`);
     setNotice(null);
@@ -269,7 +269,7 @@ export function AdminScreen() {
                       <Avatar name={report.author.displayName} src={report.author.avatarUrl} />
                       <div className="sync-issue__body">
                         <div className="sync-issue__title"><span className="status-badge status-badge--pending_approval">承認待ち</span><span>{report.author.displayName}</span></div>
-                        <Link href={`/reports/${report.id}`}>{report.title}<ArrowRightIcon /></Link>
+                        <Link href={`/reports/${report.id}`} prefetch={false}>{report.title}<ArrowRightIcon /></Link>
                         <p>{report.summary}</p>
                         <small>申請更新 {formatDateTime(report.updatedAt)}</small>
                       </div>
@@ -318,7 +318,7 @@ export function AdminScreen() {
                             <span className="status-badge status-badge--error">{issue.status === "dead" ? "手動対応" : issue.status === "partial" ? "一部失敗" : "失敗"}</span>
                             <span>{issue.target === "slack" ? "Slack配信" : "Notion同期"}</span>
                           </div>
-                          <Link href={`/reports/${issue.report.id}`}>{issue.report.title}<ArrowRightIcon /></Link>
+                          <Link href={`/reports/${issue.report.id}`} prefetch={false}>{issue.report.title}<ArrowRightIcon /></Link>
                           <p>{issue.error || "外部サービスからエラーが返されました"}</p>
                           <small>更新 {formatDateTime(issue.report.integration?.updatedAt || issue.report.updatedAt)}</small>
                         </div>

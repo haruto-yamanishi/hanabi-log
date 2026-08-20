@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ACTIVITY_AREAS, activityAreaClassName, type ActivityArea } from "@/lib/constants";
 import { todayInJst } from "@/lib/text";
-import type { Report, ReportPage } from "@/lib/types";
+import type { ReportListItem, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
 import { ArrowRightIcon, CalendarIcon, PlusIcon } from "@/components/icons";
 import { ReportCard } from "@/components/report-card";
 import { EmptyState, ErrorState, SkeletonList } from "@/components/ui";
 
 export function HomeScreen() {
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<ReportListItem[]>([]);
   const [area, setArea] = useState<ActivityArea | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

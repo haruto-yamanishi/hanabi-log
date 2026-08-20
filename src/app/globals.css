@@ -1108,6 +1108,16 @@ strong {
 .profile-stats dd { font-size: 22px; font-weight: 750; line-height: 1.2; margin: 0; }
 .profile-card > .button { grid-column: 1 / -1; justify-self: start; }
 
+.contribution-graph { border: 1px solid var(--line); margin: 0 0 34px; padding: 20px; }
+.contribution-graph .section-heading { align-items: baseline; display: flex; justify-content: space-between; margin-bottom: 16px; }
+.contribution-graph .section-heading h2 { font-size: 18px; margin: 0; }
+.contribution-graph .section-heading span, .contribution-graph p { color: var(--muted); font-size: 12px; margin: 0; }
+.contribution-graph__scroll { overflow-x: auto; padding-bottom: 4px; }
+.contribution-graph__grid { display: grid; gap: 3px; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); width: max-content; }
+.contribution-graph__day { background: #edf0f4; height: 11px; width: 11px; }
+.contribution-graph__day--1 { background: #d9eadf; }.contribution-graph__day--2 { background: #9dcbac; }.contribution-graph__day--3 { background: #55a86d; }.contribution-graph__day--4 { background: #176c39; }
+.contribution-graph p { margin-top: 12px; }
+
 .tabs,
 .admin-tabs {
   border-bottom: 1px solid var(--line);

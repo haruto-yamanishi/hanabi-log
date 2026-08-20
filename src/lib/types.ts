@@ -108,6 +108,36 @@ export interface Report {
   likedBy?: ReportLiker[];
 }
 
+/** Fields returned by report list endpoints. Full content and attachments are loaded on detail pages. */
+export interface ReportListItem {
+  id: string;
+  authorId: string;
+  author: ReportAuthor;
+  reportDate: string;
+  title: string;
+  summary: string;
+  activityArea: ActivityArea;
+  contentCategory: ContentCategory;
+  themeTags: ThemeTag[];
+  status: ReportStatus;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  integration?: IntegrationBinding | null;
+  likeCount?: number;
+  likedByCurrentUser?: boolean;
+  likedBy?: ReportLiker[];
+  /** Kept optional so existing clients can progressively move from the former full list DTO. */
+  activityText?: string;
+  learningText?: string;
+  issueText?: string;
+  nextActionText?: string;
+  version?: number;
+  archivedAt?: string | null;
+  relatedLinks?: RelatedLink[];
+  attachments?: Attachment[];
+}
+
 export interface ReportLikeSummary {
   likeCount: number;
   liked: boolean;
@@ -162,8 +192,18 @@ export interface ReportFilters {
 }
 
 export interface ReportPage {
-  reports: Report[];
+  reports: ReportListItem[];
   nextCursor: string | null;
+}
+
+export interface ContributionDay {
+  date: string;
+  count: number;
+}
+
+export interface ContributionSummary {
+  total: number;
+  days: ContributionDay[];
 }
 
 export interface OutboxJob {

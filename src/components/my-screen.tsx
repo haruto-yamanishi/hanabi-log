@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { CurrentUser, Report, ReportPage } from "@/lib/types";
+import type { ContributionSummary, CurrentUser, ReportListItem, ReportPage } from "@/lib/types";
 import type { ReportStatus } from "@/lib/constants";
 import { apiRequest } from "@/components/api-client";
 import { ArrowRightIcon, PlusIcon, SettingsIcon } from "@/components/icons";
@@ -18,22 +18,24 @@ const tabs: { value: ReportStatus; label: string }[] = [
 
 export function MyScreen() {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [reports, setReports] = useState<Record<ReportStatus, Report[]>>({ draft: [], pending_approval: [], published: [], archived: [] });
+  const [reports, setReports] = useState<Record<ReportStatus, ReportListItem[]>>({ draft: [], pending_approval: [], published: [], archived: [] });
   const [tab, setTab] = useState<ReportStatus>("draft");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contributions, setContributions] = useState<ContributionSummary | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const me = await apiRequest<CurrentUser>("/api/me", { signal });
-      const pages = await Promise.all(tabs.map(({ value }) => apiRequest<ReportPage>(
+      const [pages, contributionSummary] = await Promise.all([Promise.all(tabs.map(({ value }) => apiRequest<ReportPage>(
         `/api/reports?authorId=${encodeURIComponent(me.id)}&status=${value}&limit=50`,
         { signal },
-      )));
+      ))), apiRequest<ContributionSummary>("/api/me/contributions", { signal })]);
       setUser(me);
       setReports({ draft: pages[0].reports, pending_approval: pages[1].reports, published: pages[2].reports, archived: pages[3].reports });
+      setContributions(contributionSummary);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "マイページを読み込めませんでした");
@@ -76,6 +78,8 @@ export function MyScreen() {
             ) : null}
           </section>
 
+          <ContributionGraph summary={contributions} />
+
           <section aria-labelledby="my-reports-heading" className="content-section">
             <div className="section-heading">
               <div>
@@ -110,5 +114,31 @@ export function MyScreen() {
         </>
       )}
     </div>
+  );
+}
+
+function ContributionGraph({ summary }: { summary: ContributionSummary | null }) {
+  const days = new Map(summary?.days.map((day) => [day.date, day.count]) ?? []);
+  const dates = Array.from({ length: 365 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (364 - index));
+    return date;
+  });
+  const dateKey = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(date);
+  const max = Math.max(1, ...days.values());
+  return (
+    <section className="contribution-graph" aria-labelledby="contributions-heading">
+      <div className="section-heading"><h2 id="contributions-heading">コントリビューション</h2><span>{summary ? `${summary.total}件` : "読み込み中"}</span></div>
+      <div className="contribution-graph__scroll">
+        <div className="contribution-graph__grid" aria-label="過去1年間の投稿とコメント">
+          {dates.map((date) => {
+            const count = days.get(dateKey(date)) ?? 0;
+            const level = count === 0 ? 0 : Math.min(4, Math.ceil((count / max) * 4));
+            return <span className={`contribution-graph__day contribution-graph__day--${level}`} key={dateKey(date)} title={`${dateKey(date)}: ${count}件`} />;
+          })}
+        </div>
+      </div>
+      <p>公開した日報とコメントの記録</p>
+    </section>
   );
 }
