@@ -44,8 +44,11 @@ npm run dev
 3. 続けて `supabase/migrations/202608190002_private_storage.sql` を実行します。このmigrationがPrivate bucket `hanabi-log-private` を作成し、5 MiBの上限と許可する画像形式を設定します。
 4. `supabase/migrations/202608190003_notion_file_upload_state.sql` を実行します。Notion画像同期の再試行に使うFile Upload IDを添付へ保持します。
 5. `supabase/migrations/202608200004_notion_oauth_connections.sql` を実行します。Notion OAuthトークンの暗号化保存先を作成します。
-6. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
-7. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
+6. `supabase/migrations/202608200005_report_likes_and_weekly_digest.sql` を実行します。いいねと週間ベスト配信の保存先を作成します。
+7. `supabase/migrations/202608200006_member_activity_and_report_approval.sql` を実行します。Active / Inactiveメンバーと公開承認待ちを追加します。
+8. `supabase/migrations/202608200007_report_approval_index.sql` を実行します。承認待ち一覧用のindexを追加します。
+9. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
+10. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
 
 DBとStorageへのアクセスはサーバー側だけに限定します。Secret keyを `NEXT_PUBLIC_` 変数へ設定しないでください。
 
@@ -74,6 +77,8 @@ Slack Appで、ログイン用OIDCとBot配信を分けて設定します。
 1件ずつまとめて配信します。
 
 ログイン時のworkspace IDは `SLACK_TEAM_ID` とサーバー側で照合します。最初のAdminは `ADMIN_SLACK_USER_IDS` にSlack user IDをカンマ区切りで指定します。この設定は初回登録時のbootstrapにだけ使われ、その後に管理画面で変更した権限は再ログインしても保持されます。
+
+Adminは管理画面の「メンバー」で、OBなどをInactiveへ変更できます。Inactiveメンバーはログインと下書き保存はできますが、公開操作は申請になります。申請中の日報は本人とAdminだけが閲覧でき、Adminが「公開承認」で承認した時点でWEBへ公開され、SlackとNotionにも配信されます。既存メンバーと新規ログインしたメンバーは初期状態ではActiveです。
 
 ## Notionセットアップ
 

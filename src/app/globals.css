@@ -494,6 +494,7 @@ strong {
 .activity-area--other { --area-color: var(--ink); --area-soft: #eeeff0; --area-border: #d6d8da; }
 
 .status-badge--draft { background: var(--warning-soft); border-color: #f2ddb0; color: var(--warning); }
+.status-badge--pending_approval { background: #fff0dc; border-color: #efc887; color: #8b4f00; }
 .status-badge--published { background: var(--success-soft); border-color: #cfe6d9; color: var(--success); }
 .status-badge--archived { background: #ececef; border-color: #dddde2; color: #575b65; }
 .status-badge--error { background: var(--danger-soft); border-color: #efd0cc; color: var(--danger); }
@@ -609,6 +610,7 @@ strong {
 .inline-error,
 .archived-banner,
 .draft-banner,
+.approval-banner,
 .error-summary {
   border-radius: var(--radius-sm);
   margin-bottom: 18px;
@@ -637,7 +639,8 @@ strong {
 }
 
 .archived-banner,
-.draft-banner {
+.draft-banner,
+.approval-banner {
   align-items: center;
   background: #ececef;
   border: 1px solid #d8d8dd;
@@ -647,12 +650,16 @@ strong {
 }
 
 .draft-banner { background: var(--warning-soft); border-color: #efdba9; }
+.approval-banner { background: #fff0dc; border: 1px solid #efc887; }
 .archived-banner > svg,
-.draft-banner > svg { flex: 0 0 auto; }
+.draft-banner > svg,
+.approval-banner > svg { flex: 0 0 auto; }
 .archived-banner p,
-.draft-banner p { display: flex; flex-direction: column; margin: 0; }
+.draft-banner p,
+.approval-banner p { display: flex; flex-direction: column; margin: 0; }
 .archived-banner span,
-.draft-banner span { color: var(--muted); font-size: 12px; }
+.draft-banner span,
+.approval-banner span { color: var(--muted); font-size: 12px; }
 
 /* Login */
 .login-page {
@@ -1064,6 +1071,9 @@ strong {
 .profile-card__copy > div { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
 .profile-card__copy h2 { font-size: 19px; margin: 0; }
 .profile-card .role-badge { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.16); color: #fff; }
+.member-activity-badge { border: 1px solid rgba(255,255,255,.2); border-radius: 999px; font-size: 10px; font-weight: 700; padding: 3px 8px; }
+.member-activity-badge--active { background: rgba(54, 181, 94, .18); color: #c8f4d5; }
+.member-activity-badge--inactive { background: rgba(245, 173, 52, .18); color: #ffe0a1; }
 .profile-stats { display: flex; gap: 26px; grid-column: 1 / -1; margin: 4px 0 0; }
 .profile-stats > div { display: flex; flex-direction: column; }
 .profile-stats dt { color: #aeb9c8; font-size: 10px; order: 2; }
@@ -1345,7 +1355,7 @@ strong {
 .comment-item__body > p { font-size: 13px; margin: 5px 0 0; white-space: pre-wrap; }
 .comment-form { border-top: 2px solid var(--navy); display: grid; gap: 8px; padding-top: 16px; }
 .comment-form > label { font-size: 12px; font-weight: 700; }
-.comment-form textarea { background: var(--surface-soft); border: 1px solid var(--line-strong); border-radius: 9px; min-height: 104px; padding: 11px 12px; resize: vertical; width: 100%; }
+.comment-form textarea { background: var(--surface-soft); border: 1px solid var(--line-strong); border-radius: 0; min-height: 104px; padding: 11px 12px; resize: vertical; width: 100%; }
 .comment-form textarea:focus { background: #fff; border-color: var(--blue); outline: 2px solid color-mix(in srgb, var(--blue) 18%, transparent); }
 .comment-form > div { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
 .comment-form > div > span { color: var(--muted); font-size: 9px; }
@@ -1368,6 +1378,7 @@ strong {
 .admin-stats__icon { align-items: center; background: var(--navy-soft); border-radius: 9px; color: #385674; display: flex; grid-row: 1 / 4; height: 38px; justify-content: center; width: 38px; }
 .admin-stats__icon--error { background: var(--danger-soft); color: var(--danger); }
 .admin-stats__icon--success { background: var(--success-soft); color: var(--success); }
+.admin-stats__icon--warning { background: var(--warning-soft); color: var(--warning); }
 .admin-stats p { color: var(--muted); font-size: 9px; margin: 0; }
 .admin-stats strong { font-size: 22px; line-height: 1.2; }
 .admin-stats small { color: var(--muted-light); font-size: 8px; }
@@ -1396,11 +1407,14 @@ strong {
 .sync-issue__body > small { color: var(--muted); font-size: 9px; }
 .sync-issue > .button { grid-column: 2; justify-self: start; }
 .member-list { display: grid; }
-.member-row { align-items: center; border-bottom: 1px solid var(--line); display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto auto; padding: 13px 0; }
+.member-row { align-items: center; border-bottom: 1px solid var(--line); display: grid; gap: 10px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 13px 0; }
 .member-row:last-child { border-bottom: 0; }
 .member-row > div { display: flex; flex-direction: column; min-width: 0; }
 .member-row strong { font-size: 12px; }
 .member-row div span { color: var(--muted); font-size: 9px; }
+.member-row > label:first-of-type { grid-column: 2; grid-row: 2; }
+.member-row > label:nth-of-type(2) { grid-column: 3; grid-row: 2; }
+.member-row > .button { grid-column: 3; grid-row: 1; }
 .admin-footnote { background: var(--surface-soft); border-radius: 8px; color: var(--muted); font-size: 10px; margin: 14px 0 0; padding: 10px 12px; }
 .classification-grid { display: grid; gap: 12px; padding-top: 14px; }
 .classification-group { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
@@ -1429,10 +1443,14 @@ strong {
   .report-section--issue { margin-left: -40px; margin-right: -40px; padding-left: 40px; padding-right: 40px; }
   .report-byline { grid-template-columns: auto minmax(0, 1fr) auto; }
   .report-byline > p { grid-column: auto; margin: 0; }
-  .admin-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .admin-stats > div:last-child { grid-column: auto; }
   .sync-issue { align-items: center; grid-template-columns: auto minmax(0, 1fr) auto; }
   .sync-issue > .button { grid-column: auto; justify-self: auto; }
+  .member-row { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .member-row > label:first-of-type,
+  .member-row > label:nth-of-type(2),
+  .member-row > .button { grid-column: auto; grid-row: auto; }
   .classification-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -1746,6 +1764,7 @@ h3 {
 .sync-status,
 .admin-panel,
 .report-article,
+.report-comments,
 .conversation-card,
 .admin-stats > div,
 .integration-connection-card,

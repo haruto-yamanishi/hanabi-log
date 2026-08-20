@@ -7,6 +7,7 @@ declare module "next-auth" {
       id: string;
       slackUserId: string;
       role: MemberRole;
+      isActive: boolean;
     } & DefaultSession["user"];
   }
 
@@ -14,6 +15,7 @@ declare module "next-auth" {
     slackTeamId?: string;
     slackUserId?: string;
     role?: MemberRole;
+    isActive?: boolean;
   }
 }
 
@@ -22,6 +24,7 @@ declare module "next-auth/jwt" {
     memberId?: string;
     slackUserId?: string;
     role?: MemberRole;
+    isActive?: boolean;
     avatarUrl?: string | null;
   }
 }

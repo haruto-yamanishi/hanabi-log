@@ -69,7 +69,7 @@ export function ReportComments({
       );
       setComments((current) => current.some((item) => item.id === comment.id)
         ? current
-        : [...current, comment]);
+        : [comment, ...current]);
       setBody("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "コメントを投稿できませんでした");

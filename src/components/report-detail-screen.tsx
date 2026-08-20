@@ -86,6 +86,22 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
     }
   }
 
+  async function approveReport() {
+    if (!report || user?.role !== "admin" || report.status !== "pending_approval") return;
+    if (!window.confirm(`「${report.title}」を承認して公開しますか？\nSlackとNotionにも配信されます。`)) return;
+    setActing(true);
+    setError(null);
+    try {
+      const updated = await apiRequest<Report>(`/api/reports/${report.id}/approve`, { method: "POST" });
+      setReport(updated);
+      setNotice("日報を承認して公開しました。");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "日報を承認できませんでした");
+    } finally {
+      setActing(false);
+    }
+  }
+
   if (loading) return <div className="page"><LoadingView label="日報を読み込んでいます" /></div>;
   if (error && !report) return <div className="page"><ErrorState message={error} onRetry={() => void load()} /></div>;
   if (!report) return <div className="page"><ErrorState message="URLを確認してください。" title="日報が見つかりません" /></div>;
@@ -101,7 +117,8 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
         <Link className="back-link" href="/"><ArrowLeftIcon />ホームへ</Link>
         <div className="detail-topbar__actions">
           {canEdit && report.status !== "archived" ? <Link className="button button--secondary button--small" href={`/reports/${report.id}/edit`}><EditIcon />編集</Link> : null}
-          {canEdit && report.status !== "archived" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void changeStatus("archive")} type="button"><ArchiveIcon />アーカイブ</button> : null}
+          {canEdit && report.status === "published" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void changeStatus("archive")} type="button"><ArchiveIcon />アーカイブ</button> : null}
+          {user?.role === "admin" && report.status === "pending_approval" ? <button className="button button--primary button--small" disabled={acting} onClick={() => void approveReport()} type="button"><CheckIcon />承認して公開</button> : null}
           {canRestore ? <button className="button button--secondary button--small" disabled={acting} onClick={() => void changeStatus("restore")} type="button"><RefreshIcon />公開へ復元</button> : null}
           {user?.role === "admin" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void deleteReport()} type="button"><TrashIcon />完全削除</button> : null}
         </div>
@@ -111,6 +128,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
       {error ? <div className="inline-error" role="alert">{error}</div> : null}
       {report.status === "archived" ? <div className="archived-banner"><ArchiveIcon /><p><strong>アーカイブされた日報です</strong><span>記録として保存されています。公開一覧には表示されません。</span></p></div> : null}
       {report.status === "draft" ? <div className="draft-banner"><EditIcon /><p><strong>下書きです</strong><span>SlackとNotionにはまだ配信されていません。</span></p></div> : null}
+      {report.status === "pending_approval" ? <div className="approval-banner"><CheckIcon /><p><strong>公開承認待ちです</strong><span>Adminが承認するまで本人とAdminだけが閲覧できます。</span></p></div> : null}
 
       <article className={`report-article ${activityAreaClassName(report.activityArea)}`}>
         <header className="report-article__header">
@@ -157,7 +175,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
         </div>
       </article>
 
-      {report.status !== "draft" ? (
+      {report.status === "published" || report.status === "archived" ? (
         <ReportComments
           canPost={report.status === "published"}
           reportId={report.id}
@@ -165,7 +183,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
         />
       ) : null}
 
-      {report.status !== "draft" ? <SyncStatusPanel integration={report.integration} /> : null}
+      {report.status === "published" || report.status === "archived" ? <SyncStatusPanel integration={report.integration} /> : null}
 
       {report.status === "published" ? (
         <aside className="conversation-card">

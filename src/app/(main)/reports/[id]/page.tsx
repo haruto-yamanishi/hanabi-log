@@ -3,11 +3,13 @@ import { ReportDetailScreen } from "@/components/report-detail-screen";
 
 export const metadata: Metadata = { title: "日報" };
 
-export default async function ReportDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ published?: string; updated?: string }> }) {
+export default async function ReportDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ published?: string; requested?: string; updated?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
   const initialNotice = query.published
     ? "日報を公開しました。SlackとNotionへの同期を進めています。"
+    : query.requested
+      ? "公開を申請しました。Adminの承認後に公開されます。"
     : query.updated
       ? "変更を保存しました。公開先にも順次反映します。"
       : undefined;

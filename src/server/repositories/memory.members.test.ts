@@ -54,6 +54,7 @@ describe("MemoryReportRepository member management", () => {
         slackUserId: author.slackUserId,
         displayName: author.displayName,
         role: author.role,
+        isActive: author.isActive,
       },
       {
         reportDate: "2026-08-20",
@@ -114,6 +115,117 @@ describe("MemoryReportRepository report deletion", () => {
 
     await repository.deleteReport(created.id, admin);
     await expect(repository.getReport(created.id)).resolves.toBeNull();
+  });
+});
+
+describe("MemoryReportRepository report approval", () => {
+  it("holds an Inactive member report until an Admin approves it", async () => {
+    const repository = new MemoryReportRepository();
+    const admin = getDemoMember();
+    const member = await repository.upsertMember({
+      slackTeamId: "T_TEST",
+      slackUserId: `U_INACTIVE_${crypto.randomUUID()}`,
+      displayName: "Inactive member",
+      role: "member",
+    });
+    const inactive = await repository.setMemberActivity(member.id, false);
+    if (!inactive) throw new Error("member setup failed");
+    const actor = {
+      id: inactive.id,
+      slackUserId: inactive.slackUserId,
+      displayName: inactive.displayName,
+      role: inactive.role,
+      isActive: inactive.isActive,
+    };
+    const draft = await repository.createDraft(actor, {
+      reportDate: "2026-08-20",
+      title: "OBの活動記録",
+      activityArea: "その他",
+      contentCategory: "成果",
+      activityText: "OBとして活動を支援した。",
+    });
+
+    const requested = await repository.publishReport(draft.id, actor);
+    expect(requested.status).toBe("pending_approval");
+    expect(requested.publishedAt).toBeNull();
+    await expect(repository.claimJobs({
+      reportId: draft.id,
+      limit: 50,
+      now: new Date(Date.now() + 1_000),
+    })).resolves.toEqual([]);
+
+    await expect(repository.approveReport(draft.id, actor)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    const approved = await repository.approveReport(draft.id, {
+      id: admin.id,
+      slackUserId: admin.slackUserId,
+      displayName: admin.displayName,
+      role: admin.role,
+      isActive: admin.isActive,
+    });
+    expect(approved.status).toBe("published");
+    expect(approved.publishedAt).not.toBeNull();
+    const jobs = await repository.claimJobs({
+      reportId: draft.id,
+      limit: 50,
+      now: new Date(Date.now() + 1_000),
+    });
+    expect(new Set(jobs.map((job) => job.target))).toEqual(new Set(["slack", "notion"]));
+  });
+});
+
+describe("MemoryReportRepository report ordering", () => {
+  it("lists the latest publication first and preserves that order across pages", async () => {
+    vi.useFakeTimers();
+    try {
+      const repository = new MemoryReportRepository();
+      const member = await repository.upsertMember({
+        slackTeamId: "T_TEST",
+        slackUserId: `U_SORT_${crypto.randomUUID()}`,
+        displayName: "Sort member",
+        role: "member",
+      });
+      const actor = {
+        id: member.id,
+        slackUserId: member.slackUserId,
+        displayName: member.displayName,
+        role: member.role,
+        isActive: member.isActive,
+      };
+
+      vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+      const older = await repository.createDraft(actor, {
+        reportDate: "2030-01-02",
+        title: "先に公開した日報",
+        activityArea: "その他",
+        contentCategory: "進捗",
+        activityText: "先に公開する。",
+      });
+      await repository.publishReport(older.id, actor);
+
+      vi.setSystemTime(new Date("2030-01-01T01:00:00.000Z"));
+      const newer = await repository.createDraft(actor, {
+        reportDate: "2030-01-01",
+        title: "後から公開した日報",
+        activityArea: "その他",
+        contentCategory: "進捗",
+        activityText: "後から公開する。",
+      });
+      await repository.publishReport(newer.id, actor);
+
+      const firstPage = await repository.listReports({ authorId: actor.id, limit: 1 }, actor);
+      expect(firstPage.reports.map((report) => report.id)).toEqual([newer.id]);
+      expect(firstPage.nextCursor).not.toBeNull();
+
+      const secondPage = await repository.listReports(
+        { authorId: actor.id, limit: 1, cursor: firstPage.nextCursor ?? undefined },
+        actor,
+      );
+      expect(secondPage.reports.map((report) => report.id)).toEqual([older.id]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -7,6 +7,7 @@ const member: CurrentUser = {
   slackUserId: "U1",
   displayName: "Member",
   role: "member",
+  isActive: true,
 };
 const admin: CurrentUser = { ...member, id: "22222222-2222-4222-8222-222222222222", role: "admin" };
 const report = {
@@ -35,6 +36,14 @@ describe("authorization", () => {
   it("hides another member's draft", () => {
     const other = { ...member, id: "44444444-4444-4444-8444-444444444444" };
     expect(canReadReport(other, report)).toBe(false);
+  });
+
+  it("hides another member's pending approval report", () => {
+    const pending = { ...report, status: "pending_approval" as const };
+    const other = { ...member, id: "44444444-4444-4444-8444-444444444444" };
+    expect(canReadReport(other, pending)).toBe(false);
+    expect(canReadReport(member, pending)).toBe(true);
+    expect(canReadReport(admin, pending)).toBe(true);
   });
 
   it("hides another member's archived report but keeps the owner's access", () => {

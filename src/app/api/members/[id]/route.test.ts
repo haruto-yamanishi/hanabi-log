@@ -6,6 +6,8 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
   setMemberRole: vi.fn(),
+  setMemberActivity: vi.fn(),
+  getMember: vi.fn(),
   deleteMember: vi.fn(),
 }));
 
@@ -16,6 +18,8 @@ vi.mock("@/server/auth", () => ({
 vi.mock("@/server/repositories", () => ({
   getReportRepository: () => ({
     setMemberRole: mocks.setMemberRole,
+    setMemberActivity: mocks.setMemberActivity,
+    getMember: mocks.getMember,
     deleteMember: mocks.deleteMember,
   }),
 }));
@@ -27,6 +31,7 @@ const admin: CurrentUser = {
   slackUserId: "U_ADMIN",
   displayName: "Admin",
   role: "admin",
+  isActive: true,
 };
 const target: Member = {
   id: "20000000-0000-4000-8000-000000000001",
@@ -36,6 +41,7 @@ const target: Member = {
   email: "private@example.com",
   avatarUrl: null,
   role: "admin",
+  isActive: true,
   createdAt: "2026-08-20T00:00:00.000Z",
   updatedAt: "2026-08-20T00:00:00.000Z",
 };
@@ -56,6 +62,14 @@ function invalidRoleRequest(): Request {
   });
 }
 
+function activityRequest(isActive: boolean): Request {
+  return new Request(`https://hanabi.example/api/members/${target.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isActive }),
+  });
+}
+
 function context(id = target.id) {
   return { params: Promise.resolve({ id }) };
 }
@@ -65,6 +79,8 @@ describe("PATCH /api/members/:id", () => {
     vi.clearAllMocks();
     mocks.requireCurrentUser.mockResolvedValue(admin);
     mocks.setMemberRole.mockResolvedValue(target);
+    mocks.getMember.mockResolvedValue({ ...target, role: "member" });
+    mocks.setMemberActivity.mockResolvedValue({ ...target, role: "member", isActive: false });
   });
 
   it("lets an Admin change another member and returns only public fields", async () => {
@@ -77,6 +93,34 @@ describe("PATCH /api/members/:id", () => {
       displayName: target.displayName,
       avatarUrl: null,
       role: "admin",
+      isActive: true,
+    });
+  });
+
+  it("lets an Admin mark another Member as Inactive", async () => {
+    const response = await PATCH(activityRequest(false), context());
+
+    expect(response.status).toBe(200);
+    expect(mocks.setMemberActivity).toHaveBeenCalledWith(target.id, false);
+    await expect(response.json()).resolves.toMatchObject({
+      id: target.id,
+      role: "member",
+      isActive: false,
+    });
+  });
+
+  it("prevents self-deactivation and Admin deactivation", async () => {
+    const self = await PATCH(activityRequest(false), context(admin.id));
+    expect(self.status).toBe(409);
+    await expect(self.json()).resolves.toMatchObject({
+      error: { code: "SELF_DEACTIVATION_FORBIDDEN" },
+    });
+
+    mocks.getMember.mockResolvedValue(target);
+    const targetAdmin = await PATCH(activityRequest(false), context());
+    expect(targetAdmin.status).toBe(409);
+    await expect(targetAdmin.json()).resolves.toMatchObject({
+      error: { code: "ADMIN_DEACTIVATION_FORBIDDEN" },
     });
   });
 

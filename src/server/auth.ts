@@ -75,6 +75,7 @@ export const authOptions: NextAuthOptions = {
               slackTeamId: expectedTeamId,
               slackUserId: "U_DEMO",
               role: "admin",
+              isActive: true,
             };
           },
         }),
@@ -122,6 +123,7 @@ export const authOptions: NextAuthOptions = {
         token.memberId = member.id;
         token.slackUserId = member.slackUserId;
         token.role = member.role;
+        token.isActive = member.isActive;
         token.name = member.displayName;
         token.picture = member.avatarUrl;
       } else if (typeof token.memberId === "string") {
@@ -130,6 +132,7 @@ export const authOptions: NextAuthOptions = {
         if (member) {
           token.slackUserId = member.slackUserId;
           token.role = member.role;
+          token.isActive = member.isActive;
           token.name = member.displayName;
           token.picture = member.avatarUrl;
         }
@@ -137,10 +140,11 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (session.user && token.memberId && token.slackUserId && token.role) {
+      if (session.user && token.memberId && token.slackUserId && token.role && typeof token.isActive === "boolean") {
         session.user.id = token.memberId;
         session.user.slackUserId = token.slackUserId;
         session.user.role = token.role;
+        session.user.isActive = token.isActive;
         session.user.name = token.name ?? session.user.name;
         session.user.image = token.picture ?? null;
       }
@@ -151,12 +155,13 @@ export const authOptions: NextAuthOptions = {
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await getServerSession(authOptions);
-  if (session?.user?.id && session.user.slackUserId && session.user.role) {
+  if (session?.user?.id && session.user.slackUserId && session.user.role && typeof session.user.isActive === "boolean") {
     return {
       id: session.user.id,
       slackUserId: session.user.slackUserId,
       displayName: session.user.name ?? "Slack member",
       role: session.user.role,
+      isActive: session.user.isActive,
       avatarUrl: session.user.image,
     };
   }
@@ -167,6 +172,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       slackUserId: member.slackUserId,
       displayName: member.displayName,
       role: member.role,
+      isActive: member.isActive,
       avatarUrl: member.avatarUrl,
     };
   }

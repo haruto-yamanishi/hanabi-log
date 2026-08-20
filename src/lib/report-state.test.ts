@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { canTransition, makeDedupeKey, retryDelayMs } from "@/lib/report-state";
 
 describe("report state", () => {
+  it("allows approval requests and reserves approval for the pending state", () => {
+    expect(canTransition("draft", "pending_approval", "member")).toBe(true);
+    expect(canTransition("pending_approval", "published", "member")).toBe(false);
+    expect(canTransition("pending_approval", "published", "admin")).toBe(true);
+  });
+
   it("requires an admin to restore an archived report", () => {
     expect(canTransition("archived", "published", "member")).toBe(false);
     expect(canTransition("archived", "published", "admin")).toBe(true);

@@ -11,13 +11,14 @@ import { Avatar, EmptyState, ErrorState, PageHeader, SkeletonList } from "@/comp
 
 const tabs: { value: ReportStatus; label: string }[] = [
   { value: "draft", label: "下書き" },
+  { value: "pending_approval", label: "承認待ち" },
   { value: "published", label: "公開済み" },
   { value: "archived", label: "アーカイブ" },
 ];
 
 export function MyScreen() {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [reports, setReports] = useState<Record<ReportStatus, Report[]>>({ draft: [], published: [], archived: [] });
+  const [reports, setReports] = useState<Record<ReportStatus, Report[]>>({ draft: [], pending_approval: [], published: [], archived: [] });
   const [tab, setTab] = useState<ReportStatus>("draft");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function MyScreen() {
         { signal },
       )));
       setUser(me);
-      setReports({ draft: pages[0].reports, published: pages[1].reports, archived: pages[2].reports });
+      setReports({ draft: pages[0].reports, pending_approval: pages[1].reports, published: pages[2].reports, archived: pages[3].reports });
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "マイページを読み込めませんでした");
@@ -62,11 +63,13 @@ export function MyScreen() {
               <div>
                 <h2>{user?.displayName || "Hanabiメンバー"}</h2>
                 <span className="role-badge">{user?.role === "admin" ? "Admin" : "Member"}</span>
+                {user ? <span className={`member-activity-badge member-activity-badge--${user.isActive ? "active" : "inactive"}`}>{user.isActive ? "Active" : "Inactive・公開承認制"}</span> : null}
               </div>
             </div>
             <dl className="profile-stats">
               <div><dt>公開済み</dt><dd>{loading ? "—" : reports.published.length}</dd></div>
               <div><dt>下書き</dt><dd>{loading ? "—" : reports.draft.length}</dd></div>
+              <div><dt>承認待ち</dt><dd>{loading ? "—" : reports.pending_approval.length}</dd></div>
             </dl>
             {user?.role === "admin" ? (
               <Link className="button button--secondary button--small" href="/admin"><SettingsIcon />管理画面</Link>
@@ -95,7 +98,7 @@ export function MyScreen() {
                 <EmptyState
                   actionHref={tab === "draft" ? "/reports/new" : undefined}
                   actionLabel={tab === "draft" ? "日報を書く" : undefined}
-                  title={tab === "draft" ? "下書きはありません" : tab === "published" ? "公開済みの日報はありません" : "アーカイブはありません"}
+                  title={tab === "draft" ? "下書きはありません" : tab === "pending_approval" ? "承認待ちの日報はありません" : tab === "published" ? "公開済みの日報はありません" : "アーカイブはありません"}
                 />
               )}
             </div>

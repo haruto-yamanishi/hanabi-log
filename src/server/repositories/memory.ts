@@ -58,6 +58,7 @@ function initialState(): MemoryState {
     email: null,
     avatarUrl: null,
     role: "admin",
+    isActive: true,
     createdAt: now,
     updatedAt: now,
   };
@@ -297,6 +298,7 @@ export class MemoryReportRepository implements ReportRepository {
       email: input.email ?? null,
       avatarUrl: input.avatarUrl ?? null,
       role: input.role,
+      isActive: true,
       createdAt: now,
       updatedAt: now,
     };
@@ -322,6 +324,15 @@ export class MemoryReportRepository implements ReportRepository {
     const member = state().members.get(memberId);
     if (!member) return null;
     member.role = role;
+    if (role === "admin") member.isActive = true;
+    member.updatedAt = nowIso();
+    return clone(member);
+  }
+
+  async setMemberActivity(memberId: string, isActive: boolean): Promise<Member | null> {
+    const member = state().members.get(memberId);
+    if (!member) return null;
+    member.isActive = isActive;
     member.updatedAt = nowIso();
     return clone(member);
   }
@@ -368,13 +379,14 @@ export class MemoryReportRepository implements ReportRepository {
           .includes(query);
       })
       .sort((left, right) =>
-        right.reportDate.localeCompare(left.reportDate) || right.id.localeCompare(left.id),
+        (right.publishedAt ?? right.updatedAt).localeCompare(left.publishedAt ?? left.updatedAt) ||
+        right.id.localeCompare(left.id),
       )
       .filter(
         (report) =>
           !cursor ||
-          report.reportDate < cursor.reportDate ||
-          (report.reportDate === cursor.reportDate && report.id < cursor.id),
+          (report.publishedAt ?? report.updatedAt) < cursor.sortAt ||
+          ((report.publishedAt ?? report.updatedAt) === cursor.sortAt && report.id < cursor.id),
       );
     const limit = filters.limit ?? 20;
     const page = reports.slice(0, limit);
@@ -383,7 +395,7 @@ export class MemoryReportRepository implements ReportRepository {
       reports: page.map((report) => reportWithLikes(report, actor.id)),
       nextCursor:
         reports.length > page.length && last
-          ? encodeReportCursor(last.reportDate, last.id)
+          ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id)
           : null,
     };
   }
@@ -556,11 +568,12 @@ export class MemoryReportRepository implements ReportRepository {
     }
     if (report.status === "draft") {
       const now = nowIso();
-      report.status = "published";
-      report.publishedAt = now;
+      const publishImmediately = actor.role === "admin" || actor.isActive;
+      report.status = publishImmediately ? "published" : "pending_approval";
+      report.publishedAt = publishImmediately ? now : null;
       report.version += 1;
       report.updatedAt = now;
-      putJobs(report, "publish");
+      if (publishImmediately) putJobs(report, "publish");
     }
     if (idempotencyKey) {
       state().idempotency.set(
@@ -568,6 +581,24 @@ export class MemoryReportRepository implements ReportRepository {
         report.id,
       );
     }
+    return clone(report);
+  }
+
+  async approveReport(reportId: string, actor: CurrentUser): Promise<Report> {
+    if (actor.role !== "admin") {
+      throw new AppError("FORBIDDEN", "日報を承認できるのはAdminだけです", 403);
+    }
+    const report = state().reports.get(reportId);
+    if (!report) throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+    if (report.status !== "pending_approval") {
+      throw new AppError("INVALID_STATE", "承認待ちの日報だけを承認できます", 409);
+    }
+    const now = nowIso();
+    report.status = "published";
+    report.publishedAt = now;
+    report.version += 1;
+    report.updatedAt = now;
+    putJobs(report, "publish");
     return clone(report);
   }
 

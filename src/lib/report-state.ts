@@ -3,7 +3,8 @@ import type { DeliveryTarget, ReportStatus } from "@/lib/constants";
 import type { MemberRole } from "@/lib/types";
 
 const allowedTransitions: Record<ReportStatus, readonly ReportStatus[]> = {
-  draft: ["published"],
+  draft: ["pending_approval", "published"],
+  pending_approval: ["published"],
   published: ["archived"],
   archived: ["published"],
 };
@@ -14,7 +15,10 @@ export function canTransition(
   role: MemberRole,
 ): boolean {
   if (!allowedTransitions[from].includes(to)) return false;
-  return !(from === "archived" && to === "published" && role !== "admin");
+  const requiresAdmin =
+    (from === "archived" && to === "published") ||
+    (from === "pending_approval" && to === "published");
+  return !requiresAdmin || role === "admin";
 }
 
 export function makeDedupeKey(

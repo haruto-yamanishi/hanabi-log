@@ -105,6 +105,7 @@ export interface NotionReportIntegration {
 
 const STATUS_LABEL: Record<Report["status"], string> = {
   draft: "下書き",
+  pending_approval: "承認待ち",
   published: "公開",
   archived: "アーカイブ",
 };

@@ -23,6 +23,7 @@ const actor: CurrentUser = {
   slackUserId: "U_ACTOR",
   displayName: "Actor",
   role: "member",
+  isActive: true,
 };
 
 const member: Member = {
@@ -33,6 +34,7 @@ const member: Member = {
   email: "private@example.com",
   avatarUrl: "https://example.com/avatar.png",
   role: "member",
+  isActive: true,
   createdAt: "2026-08-20T00:00:00.000Z",
   updatedAt: "2026-08-20T00:00:00.000Z",
 };
@@ -55,6 +57,7 @@ describe("GET /api/members", () => {
         displayName: member.displayName,
         avatarUrl: member.avatarUrl,
         role: member.role,
+        isActive: true,
       },
     ]);
   });

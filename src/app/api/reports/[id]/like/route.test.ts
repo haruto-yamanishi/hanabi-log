@@ -23,6 +23,7 @@ const user: CurrentUser = {
   slackUserId: "U_TEST",
   displayName: "Test member",
   role: "member",
+  isActive: true,
 };
 const reportId = "20000000-0000-4000-8000-000000000001";
 const context = { params: Promise.resolve({ id: reportId }) };

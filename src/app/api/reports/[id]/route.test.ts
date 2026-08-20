@@ -32,6 +32,7 @@ const admin: CurrentUser = {
   slackUserId: "U_ADMIN",
   displayName: "Admin",
   role: "admin",
+  isActive: true,
 };
 const report: Report = {
   id: "20000000-0000-4000-8000-000000000001",

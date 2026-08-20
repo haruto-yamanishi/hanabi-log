@@ -24,6 +24,7 @@ export interface MemberRow {
   email: string | null;
   avatar_url: string | null;
   role: Member["role"];
+  is_active: boolean;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -110,6 +111,7 @@ export function mapMember(row: MemberRow): Member {
     email: row.email,
     avatarUrl: row.avatar_url,
     role: row.role,
+    isActive: row.is_active,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   };

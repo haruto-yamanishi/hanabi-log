@@ -30,6 +30,7 @@ const actor: CurrentUser = {
   slackUserId: "U_ACTOR",
   displayName: "Hanabi member",
   role: "member",
+  isActive: true,
 };
 const member: Member = {
   ...actor,

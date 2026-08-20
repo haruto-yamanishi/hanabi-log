@@ -49,7 +49,7 @@ export const THEME_TAGS = [
   "その他",
 ] as const;
 
-export const REPORT_STATUSES = ["draft", "published", "archived"] as const;
+export const REPORT_STATUSES = ["draft", "pending_approval", "published", "archived"] as const;
 export const DELIVERY_TARGETS = ["slack", "notion"] as const;
 export const DELIVERY_STATUSES = [
   "pending",

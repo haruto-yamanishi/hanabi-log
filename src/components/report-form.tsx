@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type ThemeTag } from "@/lib/constants";
 import { todayInJst } from "@/lib/text";
-import type { Attachment, RelatedLink, Report, ReportInput } from "@/lib/types";
+import type { Attachment, CurrentUser, RelatedLink, Report, ReportInput } from "@/lib/types";
 import { apiRequest, ClientApiError, makeIdempotencyKey } from "@/components/api-client";
 import { AlertIcon, ArrowLeftIcon, CheckIcon, ImageIcon, LinkIcon, PlusIcon, XIcon } from "@/components/icons";
 import { SyncStatusPanel } from "@/components/sync-status";
@@ -79,6 +79,7 @@ export function ReportForm({
 }) {
   const router = useRouter();
   const [report, setReport] = useState(initialReport);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [values, setValues] = useState<FormValues>(() => initialValues(initialReport));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<"draft" | "publish" | null>(null);
@@ -90,8 +91,18 @@ export function ReportForm({
   const publishKey = useRef(makeIdempotencyKey("publish-report"));
 
   const isPublished = report?.status === "published";
+  const isPendingApproval = report?.status === "pending_approval";
   const isArchived = report?.status === "archived";
+  const requiresApproval = currentUser?.role !== "admin" && currentUser?.isActive === false;
   const totalImageSize = useMemo(() => values.attachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0), [values.attachments]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiRequest<CurrentUser>("/api/me", { signal: controller.signal })
+      .then(setCurrentUser)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -219,7 +230,7 @@ export function ReportForm({
           });
 
       let finalReport = saved;
-      if (intent === "publish" && saved.status !== "published") {
+      if (intent === "publish" && saved.status === "draft") {
         finalReport = await apiRequest<Report>(`/api/reports/${saved.id}/publish`, {
           method: "POST",
           headers: { "Idempotency-Key": publishKey.current },
@@ -227,7 +238,8 @@ export function ReportForm({
       }
       setReport(finalReport);
       if (intent === "publish" || finalReport.status === "published") {
-        router.push(`/reports/${finalReport.id}?${intent === "publish" ? "published=1" : "updated=1"}`);
+        const result = finalReport.status === "pending_approval" ? "requested=1" : intent === "publish" ? "published=1" : "updated=1";
+        router.push(`/reports/${finalReport.id}?${result}`);
       } else {
         setNotice("下書きを保存しました。外部サービスには配信されていません。");
         createKey.current = makeIdempotencyKey("create-report");
@@ -256,7 +268,7 @@ export function ReportForm({
           <h1>{report ? "日報を編集" : "今日を記録する"}</h1>
           <p>{report ? "公開済みの日報を保存すると、SlackとNotionにも反映されます。" : "必須項目は日付、活動領域、内容カテゴリ、今日やったことです。"}</p>
         </div>
-        {report ? <span className={`status-badge status-badge--${report.status}`}>{report.status === "draft" ? "下書き" : report.status === "published" ? "公開済み" : "アーカイブ"}</span> : null}
+        {report ? <span className={`status-badge status-badge--${report.status}`}>{report.status === "draft" ? "下書き" : report.status === "pending_approval" ? "承認待ち" : report.status === "published" ? "公開済み" : "アーカイブ"}</span> : null}
       </header>
 
       {notice ? <div aria-live="polite" className="notice-banner"><CheckIcon />{notice}</div> : null}
@@ -266,6 +278,7 @@ export function ReportForm({
         </div>
       ) : null}
       {isArchived ? <div className="archived-banner"><AlertIcon /><p><strong>この日報はアーカイブされています</strong><span>編集するにはAdminが公開状態へ復元する必要があります。</span></p></div> : null}
+      {isPendingApproval ? <div className="approval-banner"><AlertIcon /><p><strong>承認待ちです</strong><span>Adminが承認するとWEB、Slack、Notionへ公開されます。</span></p></div> : null}
 
       <div className="form-layout">
         <div className="form-main">
@@ -368,8 +381,8 @@ export function ReportForm({
 
         <aside className="form-aside">
           <div className="form-guide">
-            <h2>公開すると</h2>
-            <ol><li><span>1</span><p><strong>Webへ保存</strong><small>まず本文を確実に保存します</small></p></li><li><span>2</span><p><strong>Slackへ投稿</strong><small>タイトルと要約をカードで共有</small></p></li><li><span>3</span><p><strong>Notionへ同期</strong><small>長く使える知識として整理</small></p></li></ol>
+            <h2>{requiresApproval ? "公開申請すると" : "公開すると"}</h2>
+            <ol>{requiresApproval ? <li><span>1</span><p><strong>Adminが確認</strong><small>承認されるまでは本人とAdminだけが閲覧できます</small></p></li> : null}<li><span>{requiresApproval ? "2" : "1"}</span><p><strong>Webへ公開</strong><small>日報一覧から閲覧できるようになります</small></p></li><li><span>{requiresApproval ? "3" : "2"}</span><p><strong>Slack・Notionへ同期</strong><small>承認後に各サービスへ共有します</small></p></li></ol>
             <p className="form-guide__note">外部サービスに障害があっても、日報は失われません。</p>
           </div>
           {isPublished ? <SyncStatusPanel integration={report?.integration} /> : null}
@@ -377,10 +390,10 @@ export function ReportForm({
       </div>
 
       <footer className="form-actions">
-        <p aria-live="polite">{busy ? busy === "publish" ? "日報を公開しています…" : "下書きを保存しています…" : isPublished ? "保存すると公開先にも変更が反映されます" : "下書きはSlack・Notionへ配信されません"}</p>
+        <p aria-live="polite">{busy ? busy === "publish" ? requiresApproval ? "公開を申請しています…" : "日報を公開しています…" : "保存しています…" : isPendingApproval ? "承認後にSlack・Notionへ配信されます" : isPublished ? "保存すると公開先にも変更が反映されます" : requiresApproval ? "Adminの承認後に公開されます" : "下書きはSlack・Notionへ配信されません"}</p>
         <div>
-          {!isPublished ? <button className="button button--secondary" disabled={Boolean(busy) || uploading || isArchived} name="intent" type="submit" value="draft">{busy === "draft" ? <span className="button-spinner" /> : null}{busy === "draft" ? "保存中…" : "下書き保存"}</button> : null}
-          <button className="button button--primary" disabled={Boolean(busy) || uploading || isArchived} name="intent" type="submit" value={isPublished ? "draft" : "publish"}>{busy ? <span className="button-spinner" /> : null}{busy ? "保存中…" : isPublished ? "変更を保存" : "公開する"}</button>
+          {!isPublished && !isPendingApproval ? <button className="button button--secondary" disabled={Boolean(busy) || uploading || isArchived} name="intent" type="submit" value="draft">{busy === "draft" ? <span className="button-spinner" /> : null}{busy === "draft" ? "保存中…" : "下書き保存"}</button> : null}
+          <button className="button button--primary" disabled={Boolean(busy) || uploading || isArchived} name="intent" type="submit" value={isPublished || isPendingApproval ? "draft" : "publish"}>{busy ? <span className="button-spinner" /> : null}{busy ? "保存中…" : isPublished || isPendingApproval ? "変更を保存" : requiresApproval ? "公開を申請" : "公開する"}</button>
         </div>
       </footer>
     </form>

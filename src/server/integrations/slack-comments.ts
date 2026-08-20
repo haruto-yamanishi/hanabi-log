@@ -156,7 +156,9 @@ export class SlackCommentService {
         source: fromWeb ? "web" : "slack",
         author,
       }];
-    });
+    }).sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+    );
   }
 
   async post(input: {

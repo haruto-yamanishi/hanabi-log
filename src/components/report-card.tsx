@@ -6,6 +6,7 @@ import { activityAreaClassName } from "@/lib/constants";
 
 const STATUS_LABELS = {
   draft: "下書き",
+  pending_approval: "承認待ち",
   published: "公開済み",
   archived: "アーカイブ",
 } as const;

@@ -17,6 +17,7 @@ export interface Member {
   email?: string | null;
   avatarUrl?: string | null;
   role: MemberRole;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +31,7 @@ export interface PublicMember {
   displayName: string;
   avatarUrl?: string | null;
   role: MemberRole;
+  isActive: boolean;
 }
 
 export interface ReportAuthor {
@@ -185,5 +187,6 @@ export interface CurrentUser {
   slackUserId: string;
   displayName: string;
   role: MemberRole;
+  isActive: boolean;
   avatarUrl?: string | null;
 }

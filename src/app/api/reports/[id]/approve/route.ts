@@ -1,9 +1,4 @@
-import {
-  apiResponse,
-  idempotencyKey,
-  reportId,
-  reportResponse,
-} from "@/app/api/_shared";
+import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { requireCurrentUser } from "@/server/auth";
 import { processReportJobs } from "@/server/integrations/outbox";
 import { getReportRepository } from "@/server/repositories";
@@ -14,15 +9,12 @@ interface RouteContext {
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
-    const user = await requireCurrentUser();
+    const actor = await requireCurrentUser();
     const id = reportId((await context.params).id);
-    let report = await getReportRepository().publishReport(
-      id,
-      user,
-      idempotencyKey(request),
-    );
-    if (report.status === "published") await processReportJobs(id);
-    report = (await getReportRepository().getReadableReport(id, user)) ?? report;
+    const repository = getReportRepository();
+    let report = await repository.approveReport(id, actor);
+    await processReportJobs(id);
+    report = (await repository.getReadableReport(id, actor)) ?? report;
     return reportResponse(report, request);
   });
 }

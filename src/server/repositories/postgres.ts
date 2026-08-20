@@ -324,7 +324,19 @@ export class PostgresReportRepository implements ReportRepository {
   async setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null> {
     const rows = await this.sql<MemberRow[]>`
       update members
-      set role = ${role}, updated_at = now()
+      set role = ${role},
+          is_active = case when ${role} = 'admin' then true else is_active end,
+          updated_at = now()
+      where id = ${memberId}
+      returning *
+    `;
+    return rows[0] ? mapMember(rows[0]) : null;
+  }
+
+  async setMemberActivity(memberId: string, isActive: boolean): Promise<Member | null> {
+    const rows = await this.sql<MemberRow[]>`
+      update members
+      set is_active = ${isActive}, updated_at = now()
       where id = ${memberId}
       returning *
     `;
@@ -380,8 +392,8 @@ export class PostgresReportRepository implements ReportRepository {
     if (filters.status) conditions.push(this.sql`r.status = ${filters.status}`);
     if (cursor) {
       conditions.push(this.sql`
-        (r.report_date < ${cursor.reportDate} or
-         (r.report_date = ${cursor.reportDate} and r.id < ${cursor.id}))
+        (coalesce(r.published_at, r.updated_at) < ${cursor.sortAt}::timestamptz or
+         (coalesce(r.published_at, r.updated_at) = ${cursor.sortAt}::timestamptz and r.id < ${cursor.id}))
       `);
     }
     const where = conditions.slice(1).reduce(
@@ -394,7 +406,7 @@ export class PostgresReportRepository implements ReportRepository {
       from reports r
       join members m on m.id = r.author_id
       where ${where}
-      order by r.report_date desc, r.id desc
+      order by coalesce(r.published_at, r.updated_at) desc, r.id desc
       limit ${limit + 1}
     `;
     const hasMore = rows.length > limit;
@@ -403,7 +415,9 @@ export class PostgresReportRepository implements ReportRepository {
     const last = reports.at(-1);
     return {
       reports,
-      nextCursor: hasMore && last ? encodeReportCursor(last.reportDate, last.id) : null,
+      nextCursor: hasMore && last
+        ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id)
+        : null,
     };
   }
 
@@ -661,17 +675,47 @@ export class PostgresReportRepository implements ReportRepository {
         throw new AppError("INVALID_STATE", "アーカイブ済みの日報は公開できません", 409);
       }
       if (report.status === "draft") {
+        const publishImmediately = actor.role === "admin" || actor.isActive;
         const updated = await tx<{ version: number }[]>`
-          update reports set status = 'published', published_at = now(),
+          update reports set
+            status = ${publishImmediately ? "published" : "pending_approval"}::report_status,
+            published_at = case when ${publishImmediately} then now() else null end,
             version = version + 1, updated_at = now()
           where id = ${reportId}
           returning version
         `;
-        await enqueueJobs(tx, reportId, updated[0].version, "publish");
+        if (publishImmediately) {
+          await enqueueJobs(tx, reportId, updated[0].version, "publish");
+        }
       }
       if (idempotencyKey) {
         await storeIdempotency(tx, actor.id, operation, idempotencyKey, reportId);
       }
+    });
+    return (await this.getReport(reportId))!;
+  }
+
+  async approveReport(reportId: string, actor: CurrentUser): Promise<Report> {
+    if (actor.role !== "admin") {
+      throw new AppError("FORBIDDEN", "日報を承認できるのはAdminだけです", 403);
+    }
+    await this.sql.begin(async (rawTx) => {
+      const tx = rawTx as Transaction;
+      const rows = await tx<LockedReportRow[]>`
+        select id, author_id, status, version from reports where id = ${reportId} for update
+      `;
+      const report = rows[0];
+      if (!report) throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+      if (report.status !== "pending_approval") {
+        throw new AppError("INVALID_STATE", "承認待ちの日報だけを承認できます", 409);
+      }
+      const updated = await tx<{ version: number }[]>`
+        update reports set status = 'published', published_at = now(),
+          version = version + 1, updated_at = now()
+        where id = ${reportId}
+        returning version
+      `;
+      await enqueueJobs(tx, reportId, updated[0].version, "publish");
     });
     return (await this.getReport(reportId))!;
   }

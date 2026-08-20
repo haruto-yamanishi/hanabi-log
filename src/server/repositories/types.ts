@@ -89,6 +89,7 @@ export interface ReportRepository extends OutboxRepository {
   getMember(memberId: string): Promise<Member | null>;
   listMembers(): Promise<Member[]>;
   setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null>;
+  setMemberActivity(memberId: string, isActive: boolean): Promise<Member | null>;
   deleteMember(memberId: string): Promise<DeleteMemberResult>;
   listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage>;
   getReadableReport(reportId: string, actor: CurrentUser): Promise<Report | null>;
@@ -117,6 +118,7 @@ export interface ReportRepository extends OutboxRepository {
     actor: CurrentUser,
     idempotencyKey?: string,
   ): Promise<Report>;
+  approveReport(reportId: string, actor: CurrentUser): Promise<Report>;
   archiveReport(reportId: string, actor: CurrentUser): Promise<Report>;
   restoreReport(reportId: string, actor: CurrentUser): Promise<Report>;
   deleteReport(reportId: string, actor: CurrentUser): Promise<void>;

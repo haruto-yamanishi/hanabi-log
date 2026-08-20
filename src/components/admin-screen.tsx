@@ -9,7 +9,7 @@ import { AlertIcon, ArrowRightIcon, CheckIcon, RefreshIcon, SettingsIcon, TrashI
 import { formatDateTime } from "@/components/report-card";
 import { Avatar, EmptyState, ErrorState, LoadingView, PageHeader } from "@/components/ui";
 
-type AdminTab = "sync" | "members" | "categories";
+type AdminTab = "approvals" | "sync" | "members" | "categories";
 
 const problemStatuses = new Set(["failed", "dead", "partial"]);
 
@@ -65,7 +65,7 @@ export function AdminScreen() {
   const [reports, setReports] = useState<Report[]>([]);
   const [members, setMembers] = useState<PublicMember[]>([]);
   const [notionConnection, setNotionConnection] = useState<NotionConnectionStatus>({ connected: false });
-  const [tab, setTab] = useState<AdminTab>("sync");
+  const [tab, setTab] = useState<AdminTab>("approvals");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -76,16 +76,17 @@ export function AdminScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [me, loadedMembers, published, archived, loadedNotionConnection] = await Promise.all([
+      const [me, loadedMembers, pendingApproval, published, archived, loadedNotionConnection] = await Promise.all([
         apiRequest<CurrentUser>("/api/me", { signal }),
         apiRequest<PublicMember[]>("/api/members", { signal }),
+        loadAllReports("pending_approval", signal),
         loadAllReports("published", signal),
         loadAllReports("archived", signal),
         apiRequest<NotionConnectionStatus>("/api/integrations/notion", { signal }),
       ]);
       setUser(me);
       setMembers(loadedMembers);
-      setReports([...published, ...archived]);
+      setReports([...pendingApproval, ...published, ...archived]);
       setNotionConnection(loadedNotionConnection);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -124,6 +125,11 @@ export function AdminScreen() {
     }
     return result;
   }), [reports]);
+  const pendingApprovals = useMemo(
+    () => reports.filter((report) => report.status === "pending_approval"),
+    [reports],
+  );
+  const deliveredReportCount = reports.length - pendingApprovals.length;
 
   async function retry(issue: SyncIssue) {
     const key = `${issue.report.id}-${issue.target}`;
@@ -156,6 +162,40 @@ export function AdminScreen() {
       setNotice(cause instanceof Error ? cause.message : "権限を変更できませんでした");
     } finally {
       setUpdatingMemberId(null);
+    }
+  }
+
+  async function updateMemberActivity(member: PublicMember, event: ChangeEvent<HTMLSelectElement>) {
+    const isActive = event.target.value === "active";
+    if (isActive === member.isActive) return;
+    setUpdatingMemberId(member.id);
+    setNotice(null);
+    try {
+      const updated = await apiRequest<PublicMember>(`/api/members/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive }),
+      });
+      setMembers((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice(`${updated.displayName}さんを${updated.isActive ? "Active" : "Inactive"}へ変更しました。`);
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "活動状態を変更できませんでした");
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
+  async function approveReport(report: Report) {
+    if (!window.confirm(`「${report.title}」を承認して公開しますか？\nSlackとNotionにも配信されます。`)) return;
+    setRetrying(`approve-${report.id}`);
+    setNotice(null);
+    try {
+      const updated = await apiRequest<Report>(`/api/reports/${report.id}/approve`, { method: "POST" });
+      setReports((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice(`「${updated.title}」を承認して公開しました。`);
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "日報を承認できませんでした");
+    } finally {
+      setRetrying(null);
     }
   }
 
@@ -204,18 +244,42 @@ export function AdminScreen() {
       {loading ? <LoadingView label="管理情報を読み込んでいます" /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : (
         <>
           <section aria-label="システム概要" className="admin-stats">
+            <div><span className="admin-stats__icon admin-stats__icon--warning"><CheckIcon /></span><p>公開承認待ち</p><strong>{pendingApprovals.length}</strong><small>Inactiveメンバー</small></div>
             <div><span className="admin-stats__icon admin-stats__icon--error"><AlertIcon /></span><p>要対応の同期</p><strong>{issues.length}</strong><small>Slack / Notion</small></div>
             <div><span className="admin-stats__icon"><UserIcon /></span><p>登録メンバー</p><strong>{members.length}</strong><small>Slackログイン済み</small></div>
-            <div><span className="admin-stats__icon admin-stats__icon--success"><CheckIcon /></span><p>同期正常率</p><strong>{reports.length ? `${Math.round(((reports.length * 2 - issues.length) / (reports.length * 2)) * 100)}%` : "—"}</strong><small>直近{reports.length}件</small></div>
+            <div><span className="admin-stats__icon admin-stats__icon--success"><CheckIcon /></span><p>同期正常率</p><strong>{deliveredReportCount ? `${Math.round(((deliveredReportCount * 2 - issues.length) / (deliveredReportCount * 2)) * 100)}%` : "—"}</strong><small>公開済み{deliveredReportCount}件</small></div>
           </section>
 
           <div aria-label="管理メニュー" className="admin-tabs" role="tablist">
+            <button aria-selected={tab === "approvals"} onClick={() => setTab("approvals")} role="tab" type="button"><CheckIcon />公開承認{pendingApprovals.length ? <span>{pendingApprovals.length}</span> : null}</button>
             <button aria-selected={tab === "sync"} onClick={() => setTab("sync")} role="tab" type="button"><RefreshIcon />同期管理{issues.length ? <span>{issues.length}</span> : null}</button>
             <button aria-selected={tab === "members"} onClick={() => setTab("members")} role="tab" type="button"><UserIcon />メンバー</button>
             <button aria-selected={tab === "categories"} onClick={() => setTab("categories")} role="tab" type="button"><SettingsIcon />分類設定</button>
           </div>
 
           {notice ? <div aria-live="polite" className="notice-banner"><CheckIcon />{notice}</div> : null}
+
+          {tab === "approvals" ? (
+            <section aria-labelledby="approvals-heading" className="admin-panel">
+              <div className="admin-panel__heading"><div><h2 id="approvals-heading">公開承認待ち</h2><p>内容を確認してからWEB、Slack、Notionへ公開します。</p></div></div>
+              {pendingApprovals.length ? (
+                <div className="sync-list">
+                  {pendingApprovals.map((report) => (
+                    <article className="sync-issue approval-item" key={report.id}>
+                      <Avatar name={report.author.displayName} src={report.author.avatarUrl} />
+                      <div className="sync-issue__body">
+                        <div className="sync-issue__title"><span className="status-badge status-badge--pending_approval">承認待ち</span><span>{report.author.displayName}</span></div>
+                        <Link href={`/reports/${report.id}`}>{report.title}<ArrowRightIcon /></Link>
+                        <p>{report.summary}</p>
+                        <small>申請更新 {formatDateTime(report.updatedAt)}</small>
+                      </div>
+                      <button className="button button--primary button--small" disabled={retrying === `approve-${report.id}`} onClick={() => void approveReport(report)} type="button"><CheckIcon />{retrying === `approve-${report.id}` ? "承認中…" : "承認して公開"}</button>
+                    </article>
+                  ))}
+                </div>
+              ) : <EmptyState message="現在、確認が必要な申請はありません。" title="承認待ちはありません" />}
+            </section>
+          ) : null}
 
           {tab === "sync" ? (
             <section aria-labelledby="sync-heading" className="admin-panel">
@@ -274,7 +338,19 @@ export function AdminScreen() {
                 {members.map((member) => (
                   <article className="member-row" key={member.id}>
                     <Avatar name={member.displayName} src={member.avatarUrl} />
-                    <div><strong>{member.displayName}</strong><span>{member.id === user?.id ? "ログイン中のアカウント" : "チームメンバー"}</span></div>
+                    <div><strong>{member.displayName}</strong><span>{member.id === user?.id ? "ログイン中のアカウント" : member.isActive ? "Activeメンバー" : "Inactiveメンバー・公開承認が必要"}</span></div>
+                    <label>
+                      <span className="sr-only">{member.displayName}さんの活動状態</span>
+                      <select
+                        aria-label={`${member.displayName}さんの活動状態`}
+                        disabled={member.id === user?.id || member.role === "admin" || updatingMemberId === member.id}
+                        onChange={(event) => void updateMemberActivity(member, event)}
+                        value={member.isActive ? "active" : "inactive"}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </label>
                     <label>
                       <span className="sr-only">{member.displayName}さんの権限</span>
                       <select

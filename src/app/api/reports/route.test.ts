@@ -30,6 +30,7 @@ const user: CurrentUser = {
   slackUserId: "U_TEST",
   displayName: "Test member",
   role: "member",
+  isActive: true,
 };
 
 const page: ReportPage = {

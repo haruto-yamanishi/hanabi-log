@@ -12,6 +12,7 @@ const actor: CurrentUser = {
   displayName: "山西遥斗",
   avatarUrl: "https://example.test/avatar.png",
   role: "member",
+  isActive: true,
 };
 const member: Member = {
   ...actor,
@@ -68,15 +69,15 @@ describe("SlackCommentService", () => {
 
     expect(comments).toEqual([
       expect.objectContaining({
-        id: "1787200001.000100",
-        body: "Slackからのコメント @山西遥斗",
-        source: "slack",
-        author: expect.objectContaining({ id: actor.id, displayName: actor.displayName }),
-      }),
-      expect.objectContaining({
         id: "1787200002.000200",
         body: "WEBからのコメント",
         source: "web",
+        author: expect.objectContaining({ id: actor.id, displayName: actor.displayName }),
+      }),
+      expect.objectContaining({
+        id: "1787200001.000100",
+        body: "Slackからのコメント @山西遥斗",
+        source: "slack",
         author: expect.objectContaining({ id: actor.id, displayName: actor.displayName }),
       }),
     ]);

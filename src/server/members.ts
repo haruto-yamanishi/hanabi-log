@@ -7,5 +7,6 @@ export function toPublicMember(member: Member): PublicMember {
     displayName: member.displayName,
     avatarUrl: member.avatarUrl ?? null,
     role: member.role,
+    isActive: member.isActive,
   };
 }
