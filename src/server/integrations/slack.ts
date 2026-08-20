@@ -69,6 +69,15 @@ function reportUrl(appBaseUrl: string, reportId: string): string {
   return base.toString();
 }
 
+function authorAttribution(report: Report): string {
+  const slackUserId = report.author.slackUserId?.trim();
+  const author =
+    slackUserId && /^[UW][A-Z0-9]+$/.test(slackUserId)
+      ? `<@${slackUserId}>`
+      : escapeMrkdwn(report.author.displayName);
+  return `Written by ${author}`;
+}
+
 export function renderSlackReport(
   report: Report,
   appBaseUrl: string,
@@ -77,15 +86,15 @@ export function renderSlackReport(
   const titlePrefix = archived ? "[アーカイブ] " : "";
   const visibleTitle = `${titlePrefix}${report.title}`;
   const headerTitle = `${ACTIVITY_EMOJI[report.activityArea]} ${visibleTitle}`;
-  const fallbackText = escapeMrkdwn(
+  const byline = authorAttribution(report);
+  const fallbackText = `${escapeMrkdwn(
     `[${report.activityArea}] ${visibleTitle}`,
-  );
+  )}\n${byline}`;
   const summary = escapeMrkdwn(report.summary || report.activityText.slice(0, 100));
   const context = [
     report.activityArea,
     report.contentCategory,
     report.reportDate.replaceAll("-", "."),
-    report.author.displayName,
   ]
     .map(escapeMrkdwn)
     .join(" · ");
@@ -98,6 +107,10 @@ export function renderSlackReport(
         text: headerTitle.slice(0, 150),
         emoji: true,
       },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: byline }],
     },
     {
       type: "section",

@@ -13,6 +13,7 @@ function report(overrides: Partial<Report> = {}): Report {
     authorId: "member-1",
     author: {
       id: "member-1",
+      slackUserId: "U123",
       displayName: "Hanabi <@U123>",
     },
     reportDate: "2026-08-19",
@@ -36,13 +37,32 @@ function report(overrides: Partial<Report> = {}): Report {
 }
 
 describe("renderSlackReport", () => {
-  it("renders a compact card and neutralizes mention markup", () => {
+  it("renders a compact card, mentions the author, and neutralizes body markup", () => {
     const payload = renderSlackReport(report(), "https://log.example.test");
-    expect(payload.text).toBe("[ロボット] CNCなしで作れる設計へ");
+    expect(payload.text).toBe(
+      "[ロボット] CNCなしで作れる設計へ\nWritten by <@U123>",
+    );
+    expect(JSON.stringify(payload.blocks)).toContain("Written by <@U123>");
     expect(JSON.stringify(payload.blocks)).toContain("要約 &lt;@U999&gt; &amp; 確認");
     expect(JSON.stringify(payload.blocks)).toContain(
       "https://log.example.test/reports/report-1",
     );
+  });
+
+  it("falls back to escaped display text for an invalid Slack user ID", () => {
+    const payload = renderSlackReport(
+      report({
+        author: {
+          id: "member-1",
+          slackUserId: "invalid-user-id",
+          displayName: "Hanabi <@U999>",
+        },
+      }),
+      "https://log.example.test",
+    );
+
+    expect(payload.text).toContain("Written by Hanabi &lt;@U999&gt;");
+    expect(payload.text).not.toContain("<@U999>");
   });
 
   it("marks archived reports and removes the action button", () => {

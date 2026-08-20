@@ -34,6 +34,8 @@ export interface PublicMember {
 
 export interface ReportAuthor {
   id: string;
+  /** Server-side integration identifier. Removed from browser-facing DTOs. */
+  slackUserId?: string;
   displayName: string;
   avatarUrl?: string | null;
 }

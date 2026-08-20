@@ -62,6 +62,7 @@ function reportColumns(sql: ReturnType<typeof getDatabase>) {
     r.activity_area, r.content_category, r.activity_text, r.learning_text,
     r.issue_text, r.next_action_text, r.theme_tags, r.status, r.version,
     r.published_at, r.archived_at, r.created_at, r.updated_at,
+    m.slack_user_id as author_slack_user_id,
     m.display_name as author_display_name,
     m.avatar_url as author_avatar_url
   `;

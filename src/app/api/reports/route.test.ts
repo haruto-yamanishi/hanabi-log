@@ -39,6 +39,7 @@ const page: ReportPage = {
       authorId: user.id,
       author: {
         id: user.id,
+        slackUserId: user.slackUserId,
         displayName: user.displayName,
       },
       reportDate: "2026-08-20",

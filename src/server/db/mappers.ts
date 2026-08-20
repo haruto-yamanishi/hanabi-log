@@ -47,6 +47,7 @@ export interface ReportRow {
   archived_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  author_slack_user_id: string;
   author_display_name: string;
   author_avatar_url: string | null;
 }
@@ -125,6 +126,7 @@ export function mapReport(
     authorId: row.author_id,
     author: {
       id: row.author_id,
+      slackUserId: row.author_slack_user_id,
       displayName: row.author_display_name,
       avatarUrl: row.author_avatar_url,
     },
