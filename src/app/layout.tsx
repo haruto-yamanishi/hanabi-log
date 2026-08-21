@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit, Zen_Kaku_Gothic_New } from "next/font/google";
 import type { ReactNode } from "react";
+import { InitialLoadingScreen } from "@/components/initial-loading-screen";
 import "./globals.css";
 
 const zenKakuGothic = Zen_Kaku_Gothic_New({
@@ -43,7 +44,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html className={`${zenKakuGothic.variable} ${outfit.variable}`} data-scroll-behavior="smooth" lang="ja">
-      <body>{children}</body>
+      <body>
+        <InitialLoadingScreen />
+        {children}
+      </body>
     </html>
   );
 }

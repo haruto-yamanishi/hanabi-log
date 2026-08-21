@@ -38,8 +38,11 @@ export function MemberProfileScreen({ memberId }: { memberId: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    const timeout = window.setTimeout(() => void load(controller.signal), 0);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [load]);
 
   if (!member && !error) return <div className="page"><LoadingView label="プロフィールを読み込んでいます" /></div>;

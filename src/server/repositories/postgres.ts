@@ -444,7 +444,7 @@ export class PostgresReportRepository implements ReportRepository {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
     const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     const today = `${values.year}-${values.month}-${values.day}`;
-    let cursor = new Date(`${today}T00:00:00+09:00`);
+    const cursor = new Date(`${today}T00:00:00+09:00`);
     let currentStreak = 0;
     while (dates.has(cursor.toISOString().slice(0, 10))) { currentStreak += 1; cursor.setUTCDate(cursor.getUTCDate() - 1); }
     return { rank: ranking.findIndex((row) => row.member_id === memberId) + 1, memberCount: ranking.length, score: target.score, publishedReports: target.published_reports, likesReceived: target.likes_received, commentsReceived: target.comments_received, commentsMade: target.comments_made, currentStreak };
