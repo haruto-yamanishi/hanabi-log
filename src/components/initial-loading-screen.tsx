@@ -34,9 +34,14 @@ export function InitialLoadingScreen() {
     <div aria-busy="true" aria-label="読み込んでいます" className="initial-loading" role="status">
       <div className="initial-loading__logo">
         <HanabiLogo className="initial-loading__image" />
-        <svg aria-hidden="true" className="initial-loading__arch" viewBox="0 0 100 75">
-          <path className="initial-loading__arch-cover" d="M 0 62 Q 50 -8 100 62" pathLength="1" />
-          <path className="initial-loading__arch-progress" d="M 0 62 Q 50 -8 100 62" pathLength="1" />
+        <svg aria-hidden="true" className="initial-loading__arch" viewBox="0 0 100 72.86" preserveAspectRatio="none">
+          <defs>
+            <clipPath id="initial-loading-arch-reveal">
+              <rect className="initial-loading__arch-reveal" height="72.86" width="0" x="0" y="0" />
+            </clipPath>
+          </defs>
+          <path className="initial-loading__arch-cover" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 A 50 48.07 0 0 0 0 51.94 Z" />
+          <path className="initial-loading__arch-progress" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 A 50 48.07 0 0 0 0 51.94 Z" clipPath="url(#initial-loading-arch-reveal)" />
         </svg>
       </div>
     </div>
