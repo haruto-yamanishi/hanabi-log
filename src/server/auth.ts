@@ -58,7 +58,7 @@ const expectedTeamId = env.SLACK_TEAM_ID ?? (isDemoMode ? "T_DEMO" : "");
 
 export const authOptions: NextAuthOptions = {
   secret: env.AUTH_SECRET || (isDemoMode ? "hanabi-log-local-demo-secret" : undefined),
-  session: { strategy: "jwt", maxAge: 60 * 60 * 12 },
+  session: { strategy: "jwt", maxAge: 60 * 60 * 48 },
   pages: { signIn: "/login", error: "/login" },
   providers: isDemoMode
     ? [
