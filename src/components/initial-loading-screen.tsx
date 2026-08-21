@@ -3,17 +3,29 @@
 import { useEffect, useState } from "react";
 import { HanabiLogo } from "@/components/logo";
 
+const MINIMUM_DISPLAY_MS = 1_100;
+
 export function InitialLoadingScreen() {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const hide = () => setVisible(false);
+    let hideTimeout: number | undefined;
+    const startedAt = performance.now();
+    const hide = () => {
+      const remaining = Math.max(0, MINIMUM_DISPLAY_MS - (performance.now() - startedAt));
+      hideTimeout = window.setTimeout(() => setVisible(false), remaining);
+    };
     if (document.readyState === "complete") {
-      const timeout = window.setTimeout(hide, 0);
-      return () => window.clearTimeout(timeout);
+      hide();
+      return () => {
+        if (hideTimeout !== undefined) window.clearTimeout(hideTimeout);
+      };
     }
     window.addEventListener("load", hide, { once: true });
-    return () => window.removeEventListener("load", hide);
+    return () => {
+      window.removeEventListener("load", hide);
+      if (hideTimeout !== undefined) window.clearTimeout(hideTimeout);
+    };
   }, []);
 
   if (!visible) return null;
