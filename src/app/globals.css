@@ -272,7 +272,6 @@ strong {
   overflow: visible;
   pointer-events: none;
   position: absolute;
-  transform: translateY(1px);
   width: 100%;
 }
 
