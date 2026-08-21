@@ -40,8 +40,8 @@ export function InitialLoadingScreen() {
               <rect className="initial-loading__arch-reveal" height="72.86" width="0" x="0" y="0" />
             </clipPath>
           </defs>
-          <path className="initial-loading__arch-cover" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 A 50 48.07 0 0 0 0 51.94 Z" />
-          <path className="initial-loading__arch-progress" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 A 50 48.07 0 0 0 0 51.94 Z" clipPath="url(#initial-loading-arch-reveal)" />
+          <path className="initial-loading__arch-cover" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 L 100 47.1 A 50 48.07 0 0 0 0 47.1 Z" />
+          <path className="initial-loading__arch-progress" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 L 100 47.1 A 50 48.07 0 0 0 0 47.1 Z" clipPath="url(#initial-loading-arch-reveal)" />
         </svg>
       </div>
     </div>
