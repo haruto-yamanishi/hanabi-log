@@ -9,12 +9,14 @@ import {
 } from "@/app/api/_shared";
 import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 import { resolveReportTitle } from "@/lib/report-title";
 
 export async function GET(request: Request): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "read");
     const url = new URL(request.url);
     const raw = Object.fromEntries(url.searchParams.entries());
     const filters = reportFiltersSchema.parse({
@@ -33,6 +35,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "write");
     const parsedInput = reportInputSchema.parse(await requestJson(request));
     const input = {
       ...parsedInput,
