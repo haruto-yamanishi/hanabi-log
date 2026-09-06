@@ -4,7 +4,9 @@ import { toPublicMember } from "@/server/members";
 import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 
-export async function GET(request: Request): Promise<Response> {
+export async function GET(
+  request: Request = new Request("http://localhost/api/members"),
+): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
     await enforceRateLimit(request, user.id, "read");
