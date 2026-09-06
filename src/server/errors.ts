@@ -6,6 +6,7 @@ export class AppError extends Error {
     message: string,
     public readonly status = 400,
     public readonly fields?: Record<string, string>,
+    public readonly headers?: HeadersInit,
   ) {
     super(message);
   }
@@ -28,7 +29,7 @@ export function errorResponse(error: unknown, id = requestId()): Response {
   if (error instanceof AppError) {
     return Response.json(
       { error: { code: error.code, message: error.message, fields: error.fields, requestId: id } },
-      { status: error.status },
+      { status: error.status, headers: error.headers },
     );
   }
   return Response.json(
