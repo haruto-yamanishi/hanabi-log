@@ -1,6 +1,3 @@
-import { getDatabase } from "@/server/db/client";
-import { env, isDemoMode } from "@/server/env";
-
 const SENSITIVE_KEY = /(token|secret|password|authorization|cookie|credential|private[_-]?key|api[_-]?key)/i;
 
 export interface AuditActor {
@@ -37,10 +34,17 @@ export function sanitizeAuditValue(value: unknown, depth = 0): unknown {
   return String(value);
 }
 
+function isLocalDemoMode(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  if (process.env.DEMO_MODE === "true") return true;
+  return !process.env.DEMO_MODE && !process.env.DATABASE_URL;
+}
+
 export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
-  // Unit/API tests use repository doubles and must not require a live audit DB.
-  // The sanitizer is tested directly; DB persistence is covered by migration/production integration.
-  if (env.NODE_ENV === "test" || isDemoMode) return;
+  // Unit/API tests use repository doubles and must not import the live DB module.
+  // DB access is loaded lazily only for real persistence paths.
+  if (process.env.NODE_ENV === "test" || isLocalDemoMode()) return;
+  const { getDatabase } = await import("@/server/db/client");
   const sql = getDatabase();
   const before = input.before === undefined ? null : sanitizeAuditValue(input.before);
   const after = input.after === undefined ? null : sanitizeAuditValue(input.after);
