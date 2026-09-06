@@ -68,6 +68,7 @@ export const reportPatchSchema = z.object({
 });
 
 export const reportFiltersSchema = z.object({
+  includeIntegration: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   q: z.string().trim().max(100).optional(),
   activityArea: z.enum(ACTIVITY_AREAS).optional(),
   contentCategory: z.enum(CONTENT_CATEGORIES).optional(),

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Outfit, Zen_Kaku_Gothic_New } from "next/font/google";
 import type { ReactNode } from "react";
 import { InitialLoadingScreen } from "@/components/initial-loading-screen";
+import { WebAppSupport } from "@/components/web-app-support";
+import { InstallPrompt } from "@/components/install-prompt";
 import "./globals.css";
 
 const zenKakuGothic = Zen_Kaku_Gothic_New({
@@ -23,6 +25,9 @@ export const metadata: Metadata = {
     default: "Hanabi Log",
     template: "%s | Hanabi Log",
   },
+  applicationName: "Hanabi LOG",
+  appleWebApp: { capable: true, title: "Hanabi LOG", statusBarStyle: "default" },
+  icons: { icon: "/app-icon?size=192", apple: "/app-icon?size=180" },
   description: "FRC Team Hanabiの活動・判断・学びを残す部内日報システム",
   robots: {
     index: false,
@@ -46,7 +51,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html className={`${zenKakuGothic.variable} ${outfit.variable}`} data-scroll-behavior="smooth" lang="ja">
       <body>
         <InitialLoadingScreen />
+        <WebAppSupport />
         {children}
+        <InstallPrompt />
       </body>
     </html>
   );

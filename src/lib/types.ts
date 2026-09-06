@@ -179,6 +179,7 @@ export interface ReportInput {
 }
 
 export interface ReportFilters {
+  includeIntegration?: boolean;
   q?: string;
   activityArea?: ActivityArea;
   contentCategory?: ContentCategory;

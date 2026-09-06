@@ -49,6 +49,7 @@ export function ReportLikeButton({
     try {
       const result = await apiRequest<ReportLikeSummary>(`/api/reports/${reportId}/like`, {
         method: nextLiked ? "PUT" : "DELETE",
+        keepalive: true,
       });
       setLiked(result.liked);
       setCount(result.likeCount);

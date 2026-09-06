@@ -19,3 +19,7 @@ export function canRestoreReport(user: CurrentUser, report: Report): boolean {
 export function requireAdmin(user: CurrentUser): void {
   if (user.role !== "admin") throw new Error("FORBIDDEN");
 }
+
+export function canDeleteReport(user: CurrentUser, report: Pick<Report, "authorId" | "status">): boolean {
+  return user.role === "admin" || (report.authorId === user.id && report.status === "draft");
+}

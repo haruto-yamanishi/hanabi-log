@@ -90,7 +90,7 @@ describe("MemoryReportRepository outbox claiming", () => {
 });
 
 describe("MemoryReportRepository report deletion", () => {
-  it("allows only an Admin to permanently delete a report", async () => {
+  it("allows only an Admin to permanently delete a published report", async () => {
     const repository = new MemoryReportRepository();
     const admin = getDemoMember();
     const created = await repository.createDraft(admin, {
@@ -107,6 +107,8 @@ describe("MemoryReportRepository report deletion", () => {
       relatedLinks: [],
       attachments: [],
     });
+
+    await repository.publishReport(created.id, admin);
 
     await expect(
       repository.deleteReport(created.id, { ...admin, role: "member" }),
@@ -262,4 +264,18 @@ describe("MemoryReportRepository report likes", () => {
       likedBy: [],
     });
   });
+});
+
+
+it("deletes owned drafts atomically and removes them from reads and lists", async () => {
+  const repository = new MemoryReportRepository();
+  const owner = { ...getDemoMember(), role: "member" as const };
+  const draft = await repository.createDraft(owner, { reportDate: "2026-08-20", title: "discard", activityArea: "その他", contentCategory: "進捗", activityText: "draft" });
+  await expect(repository.deleteReport(draft.id, { ...owner, id: crypto.randomUUID() }, draft.version)).rejects.toMatchObject({ status: 403 });
+  await expect(repository.deleteReport(draft.id, owner, draft.version + 1)).rejects.toMatchObject({ status: 409 });
+  await repository.deleteReport(draft.id, owner, draft.version);
+  expect(await repository.getReadableReport(draft.id, owner)).toBeNull();
+  const page = await repository.listReports({ authorId: owner.id, status: "draft", limit: 50 }, owner);
+  expect(page.reports.map((report) => report.id)).not.toContain(draft.id);
+  await expect(repository.patchReport(draft.id, owner, draft.version, draft)).rejects.toMatchObject({ status: 404 });
 });

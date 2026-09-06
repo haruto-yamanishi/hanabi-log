@@ -1,6 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
+import { canDeleteReport } from "@/lib/authorization";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -50,6 +51,31 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
     };
   }, [load]);
 
+  const syncPending = report?.status === "published" && (!report.integration ||
+    [report.integration.slackStatus, report.integration.notionStatus].some((status) =>
+      ["pending", "processing", "failed", "partial"].includes(status)));
+
+  useEffect(() => {
+    if (!syncPending) return;
+    const controller = new AbortController();
+    let attempts = 0;
+    let timer: number;
+    const refresh = async () => {
+      try {
+        if (document.visibilityState === "visible") {
+          attempts += 1;
+          const updated = await apiRequest<Report>(`/api/reports/${reportId}`, { signal: controller.signal });
+          if (!controller.signal.aborted) setReport(updated);
+        }
+      } catch {
+        // Keep the saved report visible when the background status refresh fails.
+      }
+      if (!controller.signal.aborted && attempts < 12) timer = window.setTimeout(refresh, 5_000);
+    };
+    timer = window.setTimeout(refresh, 5_000);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [reportId, report?.version, syncPending]);
+
   async function changeStatus(action: "archive" | "restore") {
     if (!report) return;
     const question = action === "archive"
@@ -70,15 +96,15 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
   }
 
   async function deleteReport() {
-    if (!report || user?.role !== "admin") return;
+    if (!report || !user || !canDeleteReport(user, report)) return;
     if (!window.confirm(
-      `「${report.title}」を完全に削除しますか？\n\nWeb上の日報と添付画像を削除し、Slack投稿を削除、Notionページをゴミ箱へ移動します。この操作は元に戻せません。`,
+      report.status === "draft" ? `「${report.title}」の下書きを削除しますか？この操作は元に戻せません。` : `「${report.title}」を完全に削除しますか？\n\nWeb上の日報と添付画像を削除し、Slack投稿を削除、Notionページをゴミ箱へ移動します。この操作は元に戻せません。`,
     )) return;
     setActing(true);
     setError(null);
     try {
       await apiRequest<void>(`/api/reports/${report.id}`, { method: "DELETE" });
-      router.replace("/");
+      router.replace(report.status === "draft" ? "/me" : "/");
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "日報を削除できませんでした");
@@ -120,7 +146,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
           {canEdit && report.status === "published" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void changeStatus("archive")} type="button"><ArchiveIcon />アーカイブ</button> : null}
           {user?.role === "admin" && report.status === "pending_approval" ? <button className="button button--primary button--small" disabled={acting} onClick={() => void approveReport()} type="button"><CheckIcon />承認して公開</button> : null}
           {canRestore ? <button className="button button--secondary button--small" disabled={acting} onClick={() => void changeStatus("restore")} type="button"><RefreshIcon />公開へ復元</button> : null}
-          {user?.role === "admin" ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void deleteReport()} type="button"><TrashIcon />完全削除</button> : null}
+          {user && canDeleteReport(user, report) ? <button className="button button--ghost button--small button--danger" disabled={acting} onClick={() => void deleteReport()} type="button"><TrashIcon />{report.status === "draft" ? "下書きを削除" : "完全削除"}</button> : null}
         </div>
       </div>
 

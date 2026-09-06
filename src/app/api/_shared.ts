@@ -94,15 +94,28 @@ export function publicReport(report: Report): Report {
 }
 
 /** List endpoints intentionally omit body/attachment data and provider identifiers. */
-export function publicReportListItem(report: ReportListItem): ReportListItem {
+export function publicReportListItem(report: ReportListItem, includeIntegration = false): ReportListItem {
   return {
-    ...report,
+    id: report.id,
+    authorId: report.authorId,
+    reportDate: report.reportDate,
+    title: report.title,
+    summary: report.summary,
+    activityArea: report.activityArea,
+    contentCategory: report.contentCategory,
+    themeTags: report.themeTags,
+    status: report.status,
+    publishedAt: report.publishedAt,
+    createdAt: report.createdAt,
+    updatedAt: report.updatedAt,
+    likeCount: report.likeCount,
+    likedByCurrentUser: report.likedByCurrentUser,
     author: {
       id: report.author.id,
       displayName: report.author.displayName,
       avatarUrl: report.author.avatarUrl ?? null,
     },
-    integration: report.integration
+    integration: includeIntegration && report.integration
       ? {
           reportId: report.integration.reportId,
           notionPageUrl: report.integration.notionPageUrl ?? null,
@@ -113,7 +126,7 @@ export function publicReportListItem(report: ReportListItem): ReportListItem {
           slackLastError: report.integration.slackLastError ?? null,
           updatedAt: report.integration.updatedAt,
         }
-      : report.integration,
+      : undefined,
   };
 }
 

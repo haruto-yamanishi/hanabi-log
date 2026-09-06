@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openPage } from "./navigation";
 
 test.setTimeout(150_000);
 const navigationTimeout = 90_000;
@@ -19,7 +20,7 @@ function publicationLabel(value: string): string {
 test("PCサイドバーを折りたたみ、状態を保存できる", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "PC用サイドバーの確認");
 
-  await page.goto("/");
+  await openPage(page, "/");
   const shell = page.locator(".app-shell");
   const sidebar = page.locator(".sidebar");
 
@@ -38,7 +39,7 @@ test("PCサイドバーを折りたたみ、状態を保存できる", async ({ 
 test("スマホヘッダーのロゴ周辺に余白があり、マイページの状態表示が四角い", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "スマホ表示の確認");
 
-  await page.goto("/me");
+  await openPage(page, "/me");
   const logo = page.locator(".mobile-header .brand__image");
   const box = await logo.boundingBox();
   expect(box).not.toBeNull();
@@ -47,9 +48,9 @@ test("スマホヘッダーのロゴ周辺に余白があり、マイページ�
 });
 
 test("カレンダーで投稿日の件数と日報を確認し、前後月へ移動できる", async ({ page }) => {
-  const uniqueTitle = `E2E カレンダー ${Date.now()}`;
+  const uniqueTitle = `E2E カレンダー ${crypto.randomUUID()}`;
 
-  await page.goto("/reports/new");
+  await openPage(page, "/reports/new");
   await page.getByLabel("タイトル任意").fill(uniqueTitle);
   await page.getByLabel("活動領域必須").selectOption({ label: "事務局" });
   await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
@@ -60,9 +61,9 @@ test("カレンダーで投稿日の件数と日報を確認し、前後月へ�
   const response = await page.request.get(`/api/reports/${reportId}`);
   const report = await response.json() as { reportDate: string };
 
-  await page.goto(`/calendar?month=${report.reportDate.slice(0, 7)}&date=${report.reportDate}`);
+  await openPage(page, `/calendar?month=${report.reportDate.slice(0, 7)}&date=${report.reportDate}`);
   await expect(page.getByRole("heading", { name: "カレンダー", exact: true })).toBeVisible();
-  await expect(page.getByRole("gridcell", { name: new RegExp(`${Number(report.reportDate.slice(-2))}日、\\d+件`) })).toBeVisible();
+  await expect(page.getByRole("gridcell", { name: new RegExp(`月${Number(report.reportDate.slice(-2))}日、\\d+件$`) })).toBeVisible();
   await expect(page.getByRole("heading", { name: uniqueTitle })).toBeVisible();
 
   await page.getByLabel("活動領域").selectOption({ label: "事務局" });
@@ -80,7 +81,7 @@ test("日報を下書き保存・公開し、検索から詳細を開ける", as
   const uniqueTitle = `E2E ${deviceLabel} 駆動系テスト ${Date.now()}`;
   const activity = `${deviceLabel}表示で、駆動系のギア比とチェーン張力を確認しました。`;
 
-  await page.goto("/");
+  await openPage(page, "/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.locator(".home-hero__action").click();
 
@@ -121,7 +122,7 @@ test("日報を下書き保存・公開し、検索から詳細を開ける", as
 test("タイトルが空欄なら投稿者名から自動生成して公開できる", async ({ page }) => {
   const activity = `タイトル自動生成の確認 ${Date.now()}`;
 
-  await page.goto("/reports/new");
+  await openPage(page, "/reports/new");
   await expect(page.getByText("空欄なら「あなたの名前の雑多な日報」で保存します。")).toBeVisible();
   await page.getByLabel("活動領域必須").selectOption({ label: "ロボット" });
   await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
@@ -136,7 +137,7 @@ test("タイトルが空欄なら投稿者名から自動生成して公開で�
 test("公開日報のいいねを切り替えられる", async ({ page }, testInfo) => {
   const uniqueTitle = `E2E いいね ${testInfo.project.name} ${Date.now()}`;
 
-  await page.goto("/reports/new");
+  await openPage(page, "/reports/new");
   await page.getByLabel("タイトル任意").fill(uniqueTitle);
   await page.getByLabel("活動領域必須").selectOption({ label: "ロボット" });
   await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });
@@ -157,7 +158,7 @@ test("公開日報のいいねを切り替えられる", async ({ page }, testIn
 test("一覧で投稿時刻を確認し、その場でいいねを切り替えられる", async ({ page }, testInfo) => {
   const uniqueTitle = `E2E 一覧いいね ${testInfo.project.name} ${Date.now()}`;
 
-  await page.goto("/reports/new");
+  await openPage(page, "/reports/new");
   await expect(page.getByLabel("活動領域必須").locator("option")).toHaveText([
     "選択してください",
     "ロボット",
@@ -180,7 +181,7 @@ test("一覧で投稿時刻を確認し、その場でいいねを切り替え�
   expect(reportResponse.ok()).toBe(true);
   const report = await reportResponse.json() as { publishedAt: string };
 
-  await page.goto("/");
+  await openPage(page, "/");
   let card = page.locator("article.report-card").filter({
     has: page.getByRole("heading", { name: uniqueTitle }),
   });
@@ -198,8 +199,9 @@ test("一覧で投稿時刻を確認し、その場でいいねを切り替え�
   await expect(detailLikeButton).toHaveAttribute("aria-pressed", "true");
   await detailLikeButton.click();
   await expect(page.getByRole("button", { name: /^いいね/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: /^いいね/ })).toBeEnabled();
 
-  await page.goto("/archive");
+  await openPage(page, "/archive");
   await page.getByLabel("キーワード").fill(uniqueTitle);
   await page.getByRole("button", { name: "この条件で検索" }).click();
   const archiveCard = page.locator("article.report-card").filter({
@@ -213,8 +215,9 @@ test("一覧で投稿時刻を確認し、その場でいいねを切り替え�
   await expect(page.getByRole("button", { name: /^いいね済み/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /^いいね済み/ }).click();
   await expect(page.getByRole("button", { name: /^いいね/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: /^いいね/ })).toBeEnabled();
 
-  await page.goto("/");
+  await openPage(page, "/");
   card = page.locator("article.report-card").filter({
     has: page.getByRole("heading", { name: uniqueTitle }),
   });
@@ -225,7 +228,7 @@ test("一覧で投稿時刻を確認し、その場でいいねを切り替え�
 test("管理者が確認後に日報を完全削除できる", async ({ page }) => {
   const uniqueTitle = `E2E 完全削除テスト ${Date.now()}`;
 
-  await page.goto("/reports/new");
+  await openPage(page, "/reports/new");
   await page.getByLabel("タイトル任意").fill(uniqueTitle);
   await page.getByLabel("活動領域必須").selectOption({ label: "ロボット" });
   await page.getByLabel("内容カテゴリ必須").selectOption({ label: "進捗" });

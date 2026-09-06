@@ -98,6 +98,10 @@ describe("GET /api/reports", () => {
         displayName: user.displayName,
       },
     });
+    for (const key of ["activityText", "learningText", "issueText", "nextActionText", "attachments", "relatedLinks", "integration", "likedBy"]) {
+      expect(body.reports[0]).not.toHaveProperty(key);
+    }
+    expect(JSON.stringify(body).length).toBeLessThan(JSON.stringify(page).length);
     expect(body.reports[0].author).not.toHaveProperty("email");
     expect(body.reports[0].author).not.toHaveProperty("slackTeamId");
     expect(body.reports[0].author).not.toHaveProperty("slackUserId");
@@ -140,4 +144,15 @@ describe("GET /api/reports", () => {
       "blank-title-test",
     );
   });
+});
+
+it("only returns integration details when an Admin explicitly requests them", async () => {
+  const integration = { reportId: page.reports[0].id, slackStatus: "delivered", notionStatus: "pending", updatedAt: "2026-08-20T00:00:00.000Z" };
+  mocks.listReports.mockResolvedValue({ ...page, reports: [{ ...page.reports[0], integration }] });
+  mocks.requireCurrentUser.mockResolvedValue(user);
+  const member = await GET(new Request("https://hanabi.test/api/reports?includeIntegration=true"));
+  expect((await member.json()).reports[0]).not.toHaveProperty("integration");
+  mocks.requireCurrentUser.mockResolvedValue({ ...user, role: "admin" });
+  const admin = await GET(new Request("https://hanabi.test/api/reports?includeIntegration=true"));
+  expect((await admin.json()).reports[0].integration).toMatchObject(integration);
 });

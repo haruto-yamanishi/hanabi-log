@@ -49,7 +49,7 @@ async function loadAllReports(status: ReportStatus, signal?: AbortSignal): Promi
   const seenCursors = new Set<string>();
   let cursor: string | null = null;
   do {
-    const params = new URLSearchParams({ status, limit: "50" });
+    const params = new URLSearchParams({ status, limit: "50", includeIntegration: "true" });
     if (cursor) params.set("cursor", cursor);
     const page = await apiRequest<ReportPage>(`/api/reports?${params}`, { signal });
     reports.push(...page.reports);

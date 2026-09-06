@@ -1,5 +1,6 @@
 "use client";
 
+import { canDeleteReport } from "@/lib/authorization";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
@@ -7,7 +8,7 @@ import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type ThemeTag } from "@
 import { todayInJst } from "@/lib/text";
 import type { Attachment, CurrentUser, RelatedLink, Report, ReportInput } from "@/lib/types";
 import { apiRequest, ClientApiError, makeIdempotencyKey } from "@/components/api-client";
-import { AlertIcon, ArrowLeftIcon, CheckIcon, ImageIcon, LinkIcon, PlusIcon, XIcon } from "@/components/icons";
+import { AlertIcon, ArrowLeftIcon, CheckIcon, ImageIcon, LinkIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
 import { SyncStatusPanel } from "@/components/sync-status";
 
 interface FormValues {
@@ -82,7 +83,7 @@ export function ReportForm({
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [values, setValues] = useState<FormValues>(() => initialValues(initialReport));
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<"draft" | "publish" | null>(null);
+  const [busy, setBusy] = useState<"draft" | "publish" | "delete" | null>(null);
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -103,6 +104,21 @@ export function ReportForm({
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
+
+  async function deleteDraft() {
+    if (!report || !currentUser || !canDeleteReport(currentUser, report) || busy || uploading) return;
+    if (!window.confirm(`「${report.title}」の下書きを削除しますか？この操作は元に戻せません。`)) return;
+    setBusy("delete");
+    setGlobalError(null);
+    try {
+      await apiRequest<void>(`/api/reports/${report.id}`, { method: "DELETE" });
+      router.replace("/me");
+      router.refresh();
+    } catch (cause) {
+      setGlobalError(cause instanceof Error ? cause.message : "下書きを削除できませんでした");
+      setBusy(null);
+    }
+  }
 
   function update<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -390,8 +406,9 @@ export function ReportForm({
       </div>
 
       <footer className="form-actions">
-        <p aria-live="polite">{busy ? busy === "publish" ? requiresApproval ? "公開を申請しています…" : "日報を公開しています…" : "保存しています…" : isPendingApproval ? "承認後にSlack・Notionへ配信されます" : isPublished ? "保存すると公開先にも変更が反映されます" : requiresApproval ? "Adminの承認後に公開されます" : "下書きはSlack・Notionへ配信されません"}</p>
+        <p aria-live="polite">{busy ? busy === "delete" ? "削除しています…" : busy === "publish" ? requiresApproval ? "公開を申請しています…" : "日報を公開しています…" : "保存しています…" : isPendingApproval ? "承認後にSlack・Notionへ配信されます" : isPublished ? "保存すると公開先にも変更が反映されます" : requiresApproval ? "Adminの承認後に公開されます" : "下書きはSlack・Notionへ配信されません"}</p>
         <div>
+          {report?.status === "draft" && currentUser && canDeleteReport(currentUser, report) ? <button className="button button--ghost button--danger" disabled={Boolean(busy) || uploading} onClick={() => void deleteDraft()} type="button"><TrashIcon />下書きを削除</button> : null}
           {!isPublished && !isPendingApproval ? <button className="button button--secondary" disabled={Boolean(busy) || uploading || isArchived} name="intent" type="submit" value="draft">{busy === "draft" ? <span className="button-spinner" /> : null}{busy === "draft" ? "保存中…" : "下書き保存"}</button> : null}
           <button className="button button--primary" disabled={Boolean(busy) || uploading || isArchived} name="intent" type="submit" value={isPublished || isPendingApproval ? "draft" : "publish"}>{busy ? <span className="button-spinner" /> : null}{busy ? "保存中…" : isPublished || isPendingApproval ? "変更を保存" : requiresApproval ? "公開を申請" : "公開する"}</button>
         </div>

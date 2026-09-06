@@ -44,12 +44,14 @@ export function HomeScreen() {
   const today = todayInJst();
   const todayReports = useMemo(() => reports.filter((report) => report.reportDate === today), [reports, today]);
   const recentReports = useMemo(() => reports.filter((report) => report.reportDate !== today).slice(0, 8), [reports, today]);
-  const dateLabel = new Intl.DateTimeFormat("ja-JP", {
+  const dateParts = new Intl.DateTimeFormat("ja-JP", {
     month: "long",
     day: "numeric",
     weekday: "long",
     timeZone: "Asia/Tokyo",
-  }).format(new Date());
+  }).formatToParts(new Date(`${today}T12:00:00+09:00`));
+  const dateValues = Object.fromEntries(dateParts.map((part) => [part.type, part.value]));
+  const dateLabel = `${dateValues.month}月${dateValues.day}日 ${dateValues.weekday}`;
 
   return (
     <div className="page page--home">

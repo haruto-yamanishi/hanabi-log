@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import { canReadReport } from "@/lib/authorization";
+import { canDeleteReport, canReadReport } from "@/lib/authorization";
 import { generateSummary } from "@/lib/text";
 import type { DeliveryTarget } from "@/lib/constants";
 import type {
@@ -541,13 +541,14 @@ export class PostgresReportRepository implements ReportRepository {
       conditions[0],
     );
     const limit = filters.limit ?? 20;
+    const includeIntegration = actor.role === "admin" && filters.includeIntegration;
     const rows = await this.sql<ListReportRow[]>`
       select ${listReportColumns(this.sql)},
         coalesce(likes.like_count, 0)::int as like_count,
         coalesce(likes.liked_by_current_user, false) as liked_by_current_user,
-        binding.notion_page_url, binding.notion_status, binding.notion_last_error,
+        ${includeIntegration ? this.sql`binding.notion_page_url, binding.notion_status, binding.notion_last_error,
         binding.slack_permalink, binding.slack_status, binding.slack_last_error,
-        binding.updated_at as binding_updated_at
+        binding.updated_at as binding_updated_at` : this.sql`null as binding_updated_at`}
       from reports r
       join members m on m.id = r.author_id
       left join lateral (
@@ -555,7 +556,7 @@ export class PostgresReportRepository implements ReportRepository {
           coalesce(bool_or(member_id = ${actor.id}), false) as liked_by_current_user
         from report_likes where report_id = r.id
       ) likes on true
-      left join integration_bindings binding on binding.report_id = r.id
+      ${includeIntegration ? this.sql`left join integration_bindings binding on binding.report_id = r.id` : this.sql``}
       where ${where}
       order by coalesce(r.published_at, r.updated_at) desc, r.id desc
       limit ${limit + 1}
@@ -929,17 +930,21 @@ export class PostgresReportRepository implements ReportRepository {
     return (await this.getReport(reportId))!;
   }
 
-  async deleteReport(reportId: string, actor: CurrentUser): Promise<void> {
-    if (actor.role !== "admin") {
-      throw new AppError("FORBIDDEN", "管理者権限が必要です", 403);
-    }
+  async deleteReport(reportId: string, actor: CurrentUser, expectedVersion?: number): Promise<void> {
     await this.sql.begin(async (rawTx) => {
       const tx = rawTx as Transaction;
-      const reports = await tx<{ id: string }[]>`
-        select id from reports where id = ${reportId} for update
+      const reports = await tx<{ id: string; author_id: string; status: Report["status"]; version: number }[]>`
+        select id, author_id, status, version from reports where id = ${reportId} for update
       `;
       if (!reports[0]) {
         throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+      }
+      const report = reports[0];
+      if (!canDeleteReport(actor, { authorId: report.author_id, status: report.status })) {
+        throw new AppError("FORBIDDEN", "この日報は削除できません", 403);
+      }
+      if (expectedVersion !== undefined && report.version !== expectedVersion) {
+        throw new AppError("CONFLICT", "日報が更新されました。再読み込みしてください", 409);
       }
       await tx`
         delete from idempotency_keys

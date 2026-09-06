@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   publishReport: vi.fn(),
   getReadableReport: vi.fn(),
   processReportJobs: vi.fn(),
+  after: vi.fn(),
 }));
 
 vi.mock("@/server/auth", () => ({ requireCurrentUser: mocks.requireCurrentUser }));
@@ -19,6 +20,8 @@ vi.mock("@/server/repositories", () => ({
 }));
 vi.mock("@/server/integrations/outbox", () => ({ processReportJobs: mocks.processReportJobs }));
 vi.mock("@/server/db/storage", () => ({ signReportAttachments: (report: Report) => report }));
+
+vi.mock("next/server", () => ({ after: mocks.after }));
 
 import { POST } from "./route";
 
@@ -71,4 +74,23 @@ describe("POST /api/reports/:id/publish", () => {
     expect(mocks.publishReport).toHaveBeenCalledWith(pending.id, user, undefined);
     expect(mocks.processReportJobs).not.toHaveBeenCalled();
   });
+});
+
+
+it("returns publication before integrations run and keeps it when delivery fails", async () => {
+  vi.clearAllMocks();
+  mocks.requireCurrentUser.mockResolvedValue({ ...user, isActive: true });
+  mocks.publishReport.mockResolvedValue({ ...pending, status: "published" });
+  mocks.processReportJobs.mockRejectedValueOnce(new Error("provider unavailable"));
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    const response = await POST(new Request("https://hanabi.test", { method: "POST" }), { params: Promise.resolve({ id: pending.id }) });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ status: "published" });
+    expect(mocks.processReportJobs).not.toHaveBeenCalled();
+    expect(mocks.after).toHaveBeenCalledOnce();
+    await expect(mocks.after.mock.calls[0][0]()).resolves.toBeUndefined();
+    expect(mocks.processReportJobs).toHaveBeenCalledWith(pending.id);
+    expect(log).toHaveBeenCalledOnce();
+  } finally { log.mockRestore(); }
 });

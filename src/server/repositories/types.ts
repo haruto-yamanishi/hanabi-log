@@ -135,7 +135,7 @@ export interface ReportRepository extends OutboxRepository {
   approveReport(reportId: string, actor: CurrentUser): Promise<Report>;
   archiveReport(reportId: string, actor: CurrentUser): Promise<Report>;
   restoreReport(reportId: string, actor: CurrentUser): Promise<Report>;
-  deleteReport(reportId: string, actor: CurrentUser): Promise<void>;
+  deleteReport(reportId: string, actor: CurrentUser, expectedVersion?: number): Promise<void>;
   requestIntegrationRetry(
     reportId: string,
     target: DeliveryTarget,

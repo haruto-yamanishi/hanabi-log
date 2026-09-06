@@ -16,7 +16,7 @@ import type {
   LogRanking,
   ReportPage,
 } from "@/lib/types";
-import { canEditReport, canReadReport } from "@/lib/authorization";
+import { canDeleteReport, canEditReport, canReadReport } from "@/lib/authorization";
 import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import {
@@ -53,7 +53,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function reportListItem(report: Report, actorId?: string): ReportListItem {
+function reportListItem(report: Report, actorId?: string, includeIntegration = false): ReportListItem {
   const full = reportWithLikes(report, actorId);
   return {
     id: full.id,
@@ -69,10 +69,9 @@ function reportListItem(report: Report, actorId?: string): ReportListItem {
     publishedAt: full.publishedAt,
     createdAt: full.createdAt,
     updatedAt: full.updatedAt,
-    integration: full.integration,
+    integration: includeIntegration ? full.integration : undefined,
     likeCount: full.likeCount,
     likedByCurrentUser: full.likedByCurrentUser,
-    likedBy: full.likedBy,
   };
 }
 
@@ -456,7 +455,7 @@ export class MemoryReportRepository implements ReportRepository {
     const page = reports.slice(0, limit);
     const last = page.at(-1);
     return {
-      reports: page.map((report) => reportListItem(report, actor.id)),
+      reports: page.map((report) => reportListItem(report, actor.id, actor.role === "admin" && filters.includeIntegration)),
       nextCursor:
         reports.length > page.length && last
           ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id)
@@ -706,12 +705,14 @@ export class MemoryReportRepository implements ReportRepository {
     return clone(report);
   }
 
-  async deleteReport(reportId: string, actor: CurrentUser): Promise<void> {
-    if (actor.role !== "admin") {
-      throw new AppError("FORBIDDEN", "管理者権限が必要です", 403);
-    }
-    if (!state().reports.has(reportId)) {
+  async deleteReport(reportId: string, actor: CurrentUser, expectedVersion?: number): Promise<void> {
+    const report = state().reports.get(reportId);
+    if (!report) {
       throw new AppError("NOT_FOUND", "日報が見つかりません", 404);
+    }
+    if (!canDeleteReport(actor, report)) throw new AppError("FORBIDDEN", "この日報は削除できません", 403);
+    if (expectedVersion !== undefined && report.version !== expectedVersion) {
+      throw new AppError("CONFLICT", "日報が更新されました。再読み込みしてください", 409);
     }
     state().reports.delete(reportId);
     state().likes.delete(reportId);

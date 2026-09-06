@@ -2092,3 +2092,33 @@ h3 {
   .calendar-day > strong { font-size: 8px; }
   .bottom-nav > a { font-size: 9px; }
 }
+
+.offline-banner {
+  background: #fff2cc;
+  color: var(--navy);
+  padding: 10px 18px;
+  position: sticky;
+  top: 0;
+  z-index: 1100;
+  font-size: 13px;
+}
+.install-card {
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-top: 4px solid var(--navy);
+  bottom: max(24px, env(safe-area-inset-bottom));
+  box-shadow: 0 8px 32px rgb(13 24 51 / 15%);
+  color: var(--navy);
+  padding: 20px;
+  position: fixed;
+  right: 24px;
+  width: min(340px, calc(100vw - 32px));
+  z-index: 90;
+}
+.install-card__brand { font-family: var(--font-latin); font-size: 12px; font-weight: 700; margin: 0 0 10px; }
+.install-card h2 { font-size: 18px; margin: 0 0 8px; }
+.install-card p { line-height: 1.7; }
+.install-card__actions { display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-width: 899px) {
+  .install-card { bottom: calc(80px + env(safe-area-inset-bottom)); padding: 16px; right: 16px; }
+}

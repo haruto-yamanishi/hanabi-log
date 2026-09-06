@@ -1,3 +1,5 @@
+import { canDeleteReport } from "@/lib/authorization";
+import { deleteReportAttachments } from "@/server/db/storage";
 import { reportPatchSchema } from "@/lib/validation";
 import {
   apiResponse,
@@ -57,16 +59,26 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
 export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
-    if (user.role !== "admin") {
-      throw new AppError("FORBIDDEN", "管理者権限が必要です", 403);
-    }
     const id = reportId((await context.params).id);
     const repository = getReportRepository();
     const report = await repository.getReadableReport(id, user);
     if (!report) notFound();
 
-    await deleteReportResources(report);
-    await repository.deleteReport(id, user);
+    if (!canDeleteReport(user, report)) {
+      throw new AppError("FORBIDDEN", "この日報は削除できません", 403);
+    }
+    if (report.status === "draft") {
+      // Delete conditionally before removing files: a concurrent publish/edit must win safely.
+      await repository.deleteReport(id, user, report.version);
+      try {
+        await deleteReportAttachments(report);
+      } catch (error) {
+        console.error("Deleted draft attachment cleanup failed", { reportId: id, error });
+      }
+    } else {
+      await deleteReportResources(report);
+      await repository.deleteReport(id, user);
+    }
     return new Response(null, {
       status: 204,
       headers: { "Cache-Control": "private, no-store" },

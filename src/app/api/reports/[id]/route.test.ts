@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   getReadableReport: vi.fn(),
   deleteReport: vi.fn(),
   deleteReportResources: vi.fn(),
+  deleteReportAttachments: vi.fn(),
+  patchReport: vi.fn(),
+  after: vi.fn(),
+  processReportJobs: vi.fn(),
 }));
 
 vi.mock("@/server/auth", () => ({
@@ -18,6 +22,7 @@ vi.mock("@/server/repositories", () => ({
   getReportRepository: () => ({
     getReadableReport: mocks.getReadableReport,
     deleteReport: mocks.deleteReport,
+    patchReport: mocks.patchReport,
   }),
 }));
 
@@ -25,7 +30,11 @@ vi.mock("@/server/reports/delete-report-resources", () => ({
   deleteReportResources: mocks.deleteReportResources,
 }));
 
-import { DELETE } from "./route";
+vi.mock("@/server/db/storage", () => ({ deleteReportAttachments: mocks.deleteReportAttachments, signReportAttachments: (report: Report) => report }));
+vi.mock("next/server", () => ({ after: mocks.after }));
+vi.mock("@/server/integrations/outbox", () => ({ processReportJobs: mocks.processReportJobs }));
+
+import { DELETE, PATCH } from "./route";
 
 const admin: CurrentUser = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -83,7 +92,7 @@ describe("DELETE /api/reports/:id", () => {
     );
   });
 
-  it("rejects members before reading or deleting the report", async () => {
+  it("rejects members deleting a published report", async () => {
     mocks.requireCurrentUser.mockResolvedValue({ ...admin, role: "member" });
 
     const response = await DELETE(
@@ -92,7 +101,6 @@ describe("DELETE /api/reports/:id", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(mocks.getReadableReport).not.toHaveBeenCalled();
     expect(mocks.deleteReportResources).not.toHaveBeenCalled();
     expect(mocks.deleteReport).not.toHaveBeenCalled();
   });
@@ -107,5 +115,59 @@ describe("DELETE /api/reports/:id", () => {
 
     expect(response.status).toBe(500);
     expect(mocks.deleteReport).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("draft deletion authorization", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireCurrentUser.mockResolvedValue({ ...admin, role: "member" });
+    mocks.getReadableReport.mockResolvedValue({ ...report, status: "draft" });
+    mocks.deleteReport.mockResolvedValue(undefined);
+    mocks.deleteReportAttachments.mockResolvedValue(undefined);
+  });
+  it("lets the owner delete a draft without Slack or Notion configuration", async () => {
+    const response = await DELETE(new Request("https://hanabi.test", { method: "DELETE" }), context());
+    expect(response.status).toBe(204);
+    expect(mocks.deleteReport).toHaveBeenCalledWith(report.id, expect.objectContaining({ role: "member" }), report.version);
+    expect(mocks.deleteReportAttachments).toHaveBeenCalledOnce();
+    expect(mocks.deleteReportResources).not.toHaveBeenCalled();
+  });
+  it("rejects another member draft before removing any resources", async () => {
+    mocks.getReadableReport.mockResolvedValue({ ...report, status: "draft", authorId: "another" });
+    const response = await DELETE(new Request("https://hanabi.test", { method: "DELETE" }), context());
+    expect(response.status).toBe(403);
+    expect(mocks.deleteReport).not.toHaveBeenCalled();
+    expect(mocks.deleteReportAttachments).not.toHaveBeenCalled();
+  });
+  it("does not remove images when a concurrent edit wins", async () => {
+    const { AppError } = await import("@/server/errors");
+    mocks.deleteReport.mockRejectedValueOnce(new AppError("CONFLICT", "updated", 409));
+    const response = await DELETE(new Request("https://hanabi.test", { method: "DELETE" }), context());
+    expect(response.status).toBe(409);
+    expect(mocks.deleteReportAttachments).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH deferred delivery", () => {
+  it("returns the saved report before a slow integration job finishes", async () => {
+    vi.clearAllMocks();
+    mocks.requireCurrentUser.mockResolvedValue(admin);
+    mocks.getReadableReport.mockResolvedValue(report);
+    mocks.patchReport.mockResolvedValue({ ...report, version: 2 });
+    let finish!: () => void;
+    mocks.processReportJobs.mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const response = await PATCH(new Request("https://hanabi.test", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: 1, report: { reportDate: report.reportDate, title: report.title, activityArea: report.activityArea, contentCategory: report.contentCategory, activityText: report.activityText } }),
+    }), context());
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ version: 2, status: "published" });
+    expect(mocks.processReportJobs).not.toHaveBeenCalled();
+    const work = mocks.after.mock.calls[0][0]();
+    expect(mocks.processReportJobs).toHaveBeenCalledWith(report.id);
+    finish();
+    await work;
   });
 });

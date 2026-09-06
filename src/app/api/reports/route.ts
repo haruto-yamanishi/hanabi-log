@@ -20,9 +20,10 @@ export async function GET(request: Request): Promise<Response> {
       ...raw,
       status: raw.status || "published",
     });
+    if (user.role !== "admin") delete filters.includeIntegration;
     const page = await getReportRepository().listReports(filters, user);
     return Response.json(
-      { ...page, reports: page.reports.map(publicReportListItem) },
+      { ...page, reports: page.reports.map((report) => publicReportListItem(report, filters.includeIntegration)) },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   });
