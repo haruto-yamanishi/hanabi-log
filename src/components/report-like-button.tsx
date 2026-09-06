@@ -11,7 +11,6 @@ export function ReportLikeButton({
   initialCount = 0,
   initialLiked = false,
   initialLikedBy = [],
-  currentUser,
 }: {
   reportId: string;
   initialCount?: number;
@@ -28,21 +27,6 @@ export function ReportLikeButton({
   async function toggleLike() {
     if (acting) return;
     const nextLiked = !liked;
-    const previousCount = count;
-    const previousLikedBy = likedBy;
-    setLiked(nextLiked);
-    setCount(Math.max(0, count + (nextLiked ? 1 : -1)));
-    setLikedBy((members) =>
-      nextLiked
-        ? members.some((member) => member.id === currentUser.id)
-          ? members
-          : [...members, {
-              id: currentUser.id,
-              displayName: currentUser.displayName,
-              avatarUrl: currentUser.avatarUrl,
-            }]
-        : members.filter((member) => member.id !== currentUser.id),
-    );
     setActing(true);
     setError(null);
 
@@ -55,9 +39,6 @@ export function ReportLikeButton({
       setCount(result.likeCount);
       setLikedBy(result.likedBy);
     } catch (cause) {
-      setLiked(!nextLiked);
-      setCount(previousCount);
-      setLikedBy(previousLikedBy);
       setError(cause instanceof Error ? cause.message : "いいねを更新できませんでした");
     } finally {
       setActing(false);
@@ -87,6 +68,7 @@ export function ReportLikeButton({
           ))}
         </ul>
       ) : <small className="report-like__empty">まだいいねはありません</small>}
+      <small>Slackのスタンプと合わせて1人1件。解除は押したサービス側で行えます。</small>
       {error ? <small className="report-like__error" role="alert">{error}</small> : null}
     </div>
   );

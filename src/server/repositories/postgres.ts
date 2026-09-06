@@ -308,7 +308,7 @@ export class PostgresReportRepository implements ReportRepository {
         select
           report_id::text as report_id,
           count(*)::int as like_count,
-          coalesce(bool_or(member_id = ${actorId ?? null}), false) as liked_by_current_user
+          coalesce(bool_or(member_id = ${actorId ?? null} and web_liked), false) as liked_by_current_user
         from report_likes
         where report_id in ${this.sql(ids)}
         group by report_id
@@ -553,7 +553,7 @@ export class PostgresReportRepository implements ReportRepository {
       join members m on m.id = r.author_id
       left join lateral (
         select count(*)::int as like_count,
-          coalesce(bool_or(member_id = ${actor.id}), false) as liked_by_current_user
+          coalesce(bool_or(member_id = ${actor.id} and web_liked), false) as liked_by_current_user
         from report_likes where report_id = r.id
       ) likes on true
       ${includeIntegration ? this.sql`left join integration_bindings binding on binding.report_id = r.id` : this.sql``}
@@ -614,14 +614,18 @@ export class PostgresReportRepository implements ReportRepository {
 
       if (liked) {
         await tx`
-          insert into report_likes (report_id, member_id)
-          values (${reportId}, ${actor.id})
-          on conflict (report_id, member_id) do nothing
+          insert into report_likes (report_id, member_id, web_liked)
+          values (${reportId}, ${actor.id}, true)
+          on conflict (report_id, member_id) do update set web_liked = true
         `;
       } else {
         await tx`
-          delete from report_likes
+          update report_likes set web_liked = false
           where report_id = ${reportId} and member_id = ${actor.id}
+        `;
+        await tx`
+          delete from report_likes
+          where report_id = ${reportId} and member_id = ${actor.id} and not slack_liked
         `;
       }
 

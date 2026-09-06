@@ -148,5 +148,26 @@ Inactiveメンバーは従来どおり承認待ちになります。Web未ログ
 
 [Slack公式のEvents API仕様](https://docs.slack.dev/apis/events-api/)に合わせ、署名を確認し、受信をDBへ保存して応答した後に取り込みます。
 重複したイベントでも日報は増えません。処理失敗時は受信データを残し、次のイベント受信時または既存の毎日Cronで再試行します。
-Bot投稿、スレッド返信、本文のない投稿は対象外です。過去投稿の一括取り込み、添付ファイルのコピー、Slack上の編集・削除の追従は行いません。
+Bot投稿、スレッド返信、本文のない投稿は対象外です。過去投稿の一括取り込み、添付ファイルのコピー、Slack上の削除の追従は行いません。
 Webで取り込んだ日報を編集・削除しても、本人が書いたSlack原文は保持します。
+
+
+### Slackの本文編集・スタンプ同期
+
+追加マイグレーション `supabase/migrations/202609070001_slack_edits_and_reactions.sql` を適用してデプロイしてください。
+Slack AppでBot scopeに `reactions:read` を追加して **Reinstall to Workspace** を行い、
+Event Subscriptionsのbot eventsへ `reaction_added` と `reaction_removed` を追加して保存します。
+本文編集は既存の `message.channels` / `message.groups` で受信できます。**Socket Modeはオフ**にしてください。
+イベントと権限は[Slack公式のreaction_added仕様](https://docs.slack.dev/reference/events/reaction_added/)に従います。
+
+- Slackから取り込んだ投稿の本文編集は、同じWeb日報の本文・要約へ反映し、Notionも更新します。日付・分類・承認状態は維持し、活動実績は増やしません。
+- 日報に紐づいたSlackの親投稿へのスタンプは、種類を問わずいいねとして数えます。WebからSlackへ配信した日報も対象です。
+- 同じ人の複数スタンプとWebのいいねは合計1件。スタンプをすべて外してもWebのいいねが残れば1件を維持し、逆も同様です。
+- WebのボタンはWeb側のいいねを操作し、人数とメンバー一覧はSlackとの合計を表示します。
+- 過去のスタンプは遡って取得しません。有効化後に追加・削除されたスタンプから反映します。
+
+必要な場合のローカルDB検証（空のローカルPostgreSQLテストDBを指定。本番の `DATABASE_URL` は使いません）:
+
+```bash
+SLACK_SYNC_TEST_DATABASE_URL=postgres://USER@127.0.0.1:PORT/EMPTY_TEST_DB npm run test -- src/server/integrations/slack-sync-db.test.ts
+```
