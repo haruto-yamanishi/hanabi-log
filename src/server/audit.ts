@@ -1,6 +1,6 @@
 import "server-only";
 import { getDatabase } from "@/server/db/client";
-import { isDemoMode } from "@/server/env";
+import { env, isDemoMode } from "@/server/env";
 
 const SENSITIVE_KEY = /(token|secret|password|authorization|cookie|credential|private[_-]?key|api[_-]?key)/i;
 
@@ -39,7 +39,9 @@ export function sanitizeAuditValue(value: unknown, depth = 0): unknown {
 }
 
 export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
-  if (isDemoMode) return;
+  // Unit/API tests use repository doubles and must not require a live audit DB.
+  // The sanitizer is tested directly; DB persistence is covered by migration/production integration.
+  if (env.NODE_ENV === "test" || isDemoMode) return;
   const sql = getDatabase();
   const before = input.before === undefined ? null : sanitizeAuditValue(input.before);
   const after = input.after === undefined ? null : sanitizeAuditValue(input.after);
