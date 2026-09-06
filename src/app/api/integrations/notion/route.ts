@@ -1,11 +1,12 @@
 import { apiResponse } from "@/app/api/_shared";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { isDemoMode } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { revokeNotionOAuthConnection } from "@/server/integrations/notion-oauth";
 import { getNotionOAuthConnectionSummary } from "@/server/integrations/notion-oauth-store";
 
-async function requireAdmin(): Promise<void> {
+async function requireAdmin() {
   const user = await requireCurrentUser();
   if (user.role !== "admin") {
     throw new AppError(
@@ -14,6 +15,7 @@ async function requireAdmin(): Promise<void> {
       403,
     );
   }
+  return user;
 }
 
 export async function GET(): Promise<Response> {
@@ -33,8 +35,17 @@ export async function GET(): Promise<Response> {
 
 export async function DELETE(): Promise<Response> {
   return apiResponse(async () => {
-    await requireAdmin();
+    const actor = await requireAdmin();
+    const before = isDemoMode ? null : await getNotionOAuthConnectionSummary();
     await revokeNotionOAuthConnection();
+    await recordAuditEvent({
+      actor,
+      action: "notion.disconnected",
+      targetType: "integration",
+      targetId: "notion",
+      before: before ? { connected: before.connected } : null,
+      after: { connected: false },
+    });
     return new Response(null, { status: 204 });
   });
 }
