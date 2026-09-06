@@ -7,6 +7,7 @@ import {
   reportResponse,
   requestJson,
 } from "@/app/api/_shared";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { getReportRepository } from "@/server/repositories";
 import { resolveReportTitle } from "@/lib/report-title";
@@ -43,6 +44,13 @@ export async function POST(request: Request): Promise<Response> {
       input,
       idempotencyKey(request),
     );
+    await recordAuditEvent({
+      actor: user,
+      action: "report.created",
+      targetType: "report",
+      targetId: report.id,
+      after: { status: report.status, version: report.version },
+    });
     return reportResponse(report, request, 201);
   });
 }
