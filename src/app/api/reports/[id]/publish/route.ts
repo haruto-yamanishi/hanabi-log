@@ -4,6 +4,7 @@ import {
   reportId,
   reportResponse,
 } from "@/app/api/_shared";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { scheduleReportJobs } from "@/server/integrations/schedule";
 import { getReportRepository } from "@/server/repositories";
@@ -21,6 +22,13 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       user,
       idempotencyKey(request),
     );
+    await recordAuditEvent({
+      actor: user,
+      action: report.status === "published" ? "report.published" : "report.publish_requested",
+      targetType: "report",
+      targetId: id,
+      after: { status: report.status, version: report.version },
+    });
     if (report.status === "published") scheduleReportJobs(id);
     return reportResponse(report, request);
   });
