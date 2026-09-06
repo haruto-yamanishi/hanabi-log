@@ -1,4 +1,3 @@
-import "server-only";
 import { getDatabase } from "@/server/db/client";
 import { env, isDemoMode } from "@/server/env";
 
