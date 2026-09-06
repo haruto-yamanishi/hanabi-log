@@ -2,6 +2,7 @@ import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { scheduleReportJobs } from "@/server/integrations/schedule";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 
 interface RouteContext {
@@ -11,6 +12,7 @@ interface RouteContext {
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireCurrentUser();
+    await enforceRateLimit(request, actor.id, "admin");
     const id = reportId((await context.params).id);
     const repository = getReportRepository();
     const report = await repository.approveReport(id, actor);
