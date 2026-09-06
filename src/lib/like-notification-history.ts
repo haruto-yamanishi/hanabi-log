@@ -1,0 +1,13 @@
+export interface LikeNotificationHistory {
+  reportId: string;
+  reportTitle: string;
+  recipientName: string;
+  recipientSlackUserId: string;
+  recipientRecorded: boolean;
+  thresholds: number[];
+  messageText: string | null;
+  sentAt: string | null;
+  attemptedAt: string | null;
+  status: "sent" | "failed" | "processing" | "pending";
+  error: string | null;
+}

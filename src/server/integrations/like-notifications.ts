@@ -22,7 +22,7 @@ export async function processLikeNotifications(): Promise<void> {
   for (const candidate of pending) {
     const claimed = await sql.begin(async (tx) => {
       // Serialize delivery for a report, including overlapping milestones.
-      const [report] = await tx`select reports.id, reports.title, members.slack_user_id
+      const [report] = await tx`select reports.id, reports.title, members.slack_user_id, members.display_name
         from reports join members on members.id = reports.author_id
         where reports.id = ${candidate.report_id} and reports.status = 'published'
           and members.slack_team_id = ${env.SLACK_TEAM_ID ?? ""}
@@ -35,19 +35,24 @@ export async function processLikeNotifications(): Promise<void> {
         where report_id = ${report.id} and sent_at is null returning threshold`;
       if (!rows.length) return null;
       const highest = rows.reduce((left, right) => left.threshold > right.threshold ? left : right);
-      return { id: report.id as string, title: report.title as string, slackUserId: report.slack_user_id as string, threshold: highest.threshold as number };
+      return { id: report.id as string, title: report.title as string, slackUserId: report.slack_user_id as string, recipientName: report.display_name as string, threshold: highest.threshold as number };
     });
     if (!claimed) continue;
     try {
       const url = new URL(`/reports/${claimed.id}`, env.APP_BASE_URL).toString();
       const title = String(claimed.title).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-      // A user ID opens the bot's DM using the existing chat:write permission.
-      await client.chat.postMessage({
+      const text = `🎉 あなたの日報「${title}」のいいねが${claimed.threshold}人を超えました！\n<${url}|日報を見る>`;
+      await sql`update report_like_notifications set recipient_slack_user_id = ${claimed.slackUserId},
+        recipient_name = ${claimed.recipientName}, message_text = ${text}, delivery_threshold = ${claimed.threshold}
+        where report_id = ${claimed.id} and threshold <= ${claimed.threshold} and sent_at is null`;
+      // Store exactly the text sent to Slack, rather than reconstructing it later.
+      const message = await client.chat.postMessage({
         channel: claimed.slackUserId,
-        text: `🎉 あなたの日報「${title}」のいいねが${claimed.threshold}人を超えました！\n<${url}|日報を見る>`,
+        text,
         unfurl_links: false, unfurl_media: false,
       });
-      await sql`update report_like_notifications set sent_at = now(), last_error = null
+      await sql`update report_like_notifications set sent_at = now(), last_error = null,
+        slack_channel_id = ${message.channel ?? null}, slack_message_ts = ${message.ts ?? null}
         where report_id = ${claimed.id} and threshold <= ${claimed.threshold} and sent_at is null`;
     } catch {
       // Keep the claim for five minutes to avoid rapid retries during outages.

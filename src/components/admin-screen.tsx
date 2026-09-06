@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LikeNotificationHistoryPanel } from "@/components/like-notification-history";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type DeliveryTarget, type ReportStatus } from "@/lib/constants";
 import type { CurrentUser, MemberRole, PublicMember, Report, ReportListItem, ReportPage } from "@/lib/types";
@@ -342,6 +343,7 @@ export function AdminScreen() {
                   </div>
                 )}
               </div>
+              <LikeNotificationHistoryPanel />
               <div className="admin-panel__heading"><div><h2 id="sync-heading">失敗した同期</h2><p>日報は公開されたままです。外部サービスへの配信だけを再試行します。</p></div></div>
               {issues.length ? (
                 <div className="sync-list">

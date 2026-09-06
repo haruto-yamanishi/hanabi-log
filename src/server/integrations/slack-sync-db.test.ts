@@ -22,6 +22,7 @@ vi.mock("@slack/web-api", () => ({ WebClient: class {
 
 import { POST } from "@/app/api/integrations/slack/events/route";
 import { importPastSlackReactions } from "./slack-reaction-backfill";
+import { listLikeNotificationHistory } from "./like-notification-history";
 import { processLikeNotifications } from "./like-notifications";
 import { PostgresReportRepository } from "@/server/repositories/postgres";
 
@@ -36,7 +37,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -115,6 +116,11 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     await processLikeNotifications();
     expect(state.postMessage).toHaveBeenCalledTimes(1);
     expect(state.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "U_AUTHOR", text: expect.stringContaining("5人を超えました") }));
+    const [history] = await listLikeNotificationHistory();
+    expect(history).toMatchObject({ recipientName: "U_AUTHOR", recipientSlackUserId: "U_AUTHOR",
+      recipientRecorded: true, status: "sent", thresholds: [5], messageText: state.postMessage.mock.calls[0][0].text });
+    await sql`update members set display_name = '変更後の名前' where slack_user_id = 'U_AUTHOR'`;
+    expect((await listLikeNotificationHistory())[0].recipientName).toBe("U_AUTHOR");
   });
 
   it("notifies only above each threshold, retries a failed DM, and does not repeat after an unlike", async () => {
