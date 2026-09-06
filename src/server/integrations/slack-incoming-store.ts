@@ -77,7 +77,11 @@ async function processSlackReactions(client: WebClient): Promise<void> {
     try {
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${reaction.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: reaction.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) continue;
+      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+        await sql`update slack_report_reactions set processed_at = now()
+          where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}`;
+        continue;
+      }
       await sql.begin(async (tx) => {
         // Web likes use the same report lock, keeping concurrent toggles consistent.
         const report = await tx`select id from reports where id = ${reaction.report_id} for update`;

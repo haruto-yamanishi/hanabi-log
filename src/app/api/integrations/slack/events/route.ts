@@ -5,6 +5,8 @@ import { incomingSlackMessage, incomingSlackReaction, verifySlackSignature } fro
 import { processIncomingSlackReports } from "@/server/integrations/slack-incoming-store";
 import { processPendingJobs } from "@/server/integrations/outbox";
 
+import { processLikeNotifications } from "@/server/integrations/like-notifications";
+
 export async function POST(request: Request): Promise<Response> {
   if (isDemoMode || !env.SLACK_SIGNING_SECRET || !env.SLACK_TEAM_ID || !env.SLACK_CHANNEL_ID) return new Response(null, { status: 503 });
   const body = await request.text();
@@ -36,6 +38,7 @@ export async function POST(request: Request): Promise<Response> {
     after(async () => {
       try {
         await processIncomingSlackReports();
+        await processLikeNotifications();
         await processPendingJobs();
       } catch { console.error("Deferred Slack import failed; retained for cron retry"); }
     });

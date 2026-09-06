@@ -4,19 +4,25 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Opt in with an empty LOCAL PostgreSQL database; never uses DATABASE_URL.
-const state = vi.hoisted(() => ({ after: [] as (() => Promise<void>)[], sql: undefined as unknown }));
+const state = vi.hoisted(() => ({ after: [] as (() => Promise<void>)[], sql: undefined as unknown,
+  reactions: vi.fn(), postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "123.456" }),
+}));
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ after: (callback: () => Promise<void>) => state.after.push(callback) }));
 vi.mock("@/server/env", () => ({ isDemoMode: false, env: {
-  SLACK_TEAM_ID: "T_TEST", SLACK_BOT_TOKEN: "test", SLACK_CHANNEL_ID: "C_TEST", SLACK_SIGNING_SECRET: "secret",
+  APP_BASE_URL: "https://hanabi.test", SLACK_TEAM_ID: "T_TEST", SLACK_BOT_TOKEN: "test", SLACK_CHANNEL_ID: "C_TEST", SLACK_SIGNING_SECRET: "secret",
 } }));
 vi.mock("@/server/db/client", () => ({ getDatabase: () => state.sql }));
 vi.mock("@/server/integrations/outbox", () => ({ processPendingJobs: vi.fn() }));
 vi.mock("@slack/web-api", () => ({ WebClient: class {
+  reactions = { get: state.reactions };
+  chat = { postMessage: state.postMessage };
   users = { info: async ({ user }: { user: string }) => ({ user: { name: user, profile: {} } }) };
 } }));
 
 import { POST } from "@/app/api/integrations/slack/events/route";
+import { importPastSlackReactions } from "./slack-reaction-backfill";
+import { processLikeNotifications } from "./like-notifications";
 import { PostgresReportRepository } from "@/server/repositories/postgres";
 
 const url = process.env.SLACK_SYNC_TEST_DATABASE_URL;
@@ -30,7 +36,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -88,6 +94,59 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     await send(reaction("reaction_added", "heart", 1788735804));
     await send(reaction("reaction_added", "heart", 1788735805, "U_ANOTHER"));
     expect(await sql`select * from report_likes`).toHaveLength(2);
+  });
+
+  it("imports historical emojis once, preserves newer removals and existing Web likes", async () => {
+    const [report] = await sql`select id from reports`;
+    const [reader] = await sql`select id from members where slack_user_id = 'U_READER'`;
+    await sql`update report_likes set web_liked = true where member_id = ${reader.id}`;
+    const users = ["U_READER", "U_H0", "U_H1", "U_H2", "U_H3"];
+    state.reactions.mockResolvedValue({ message: { reactions: [
+      { name: "heart", users, count: users.length },
+      { name: "tada", users, count: users.length },
+    ] } });
+    expect(await importPastSlackReactions()).toMatchObject({ imported: true, remaining: 0, pending: 0 });
+    expect(await sql`select * from report_likes where report_id = ${report.id}`).toHaveLength(6);
+    const [removed] = await sql`select active from slack_report_reactions where user_id = 'U_READER' and reaction = 'tada'`;
+    expect(removed.active).toBe(false);
+    expect(await importPastSlackReactions()).toMatchObject({ imported: false, remaining: 0, pending: 0 });
+    expect(state.reactions).toHaveBeenCalledTimes(1);
+    await processLikeNotifications();
+    await processLikeNotifications();
+    expect(state.postMessage).toHaveBeenCalledTimes(1);
+    expect(state.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "U_AUTHOR", text: expect.stringContaining("5人を超えました") }));
+  });
+
+  it("notifies only above each threshold, retries a failed DM, and does not repeat after an unlike", async () => {
+    const [report] = await sql`select id from reports`;
+    const repository = new PostgresReportRepository();
+    for (let count = 7; count <= 31; count++) {
+      const [member] = await sql`insert into members (slack_team_id, slack_user_id, display_name)
+        values ('T_TEST', ${`U_L${count}`}, 'Reader') returning id`;
+      await repository.setReportLike(report.id, { id: member.id, slackUserId: `U_L${count}`, displayName: "Reader", role: "member", isActive: true }, true);
+      if (count === 11) state.postMessage.mockRejectedValueOnce(new Error("Slack unavailable"));
+      await processLikeNotifications();
+      if (count === 10) expect(state.postMessage).toHaveBeenCalledTimes(1);
+      if (count === 11) {
+        const [failed] = await sql`select * from report_like_notifications where threshold = 10`;
+        expect(failed.sent_at).toBeNull();
+        expect(failed.last_error).toBe("SLACK_DM_FAILED");
+        await processLikeNotifications();
+        expect(state.postMessage).toHaveBeenCalledTimes(2);
+        await sql`update report_like_notifications set claimed_at = now() - interval '6 minutes' where threshold = 10`;
+        await processLikeNotifications();
+      }
+      if (count === 20) expect(state.postMessage).toHaveBeenCalledTimes(3);
+      if (count === 30) expect(state.postMessage).toHaveBeenCalledTimes(4);
+    }
+    expect(await sql`select * from report_like_notifications where sent_at is not null`).toHaveLength(4);
+    expect(state.postMessage).toHaveBeenCalledTimes(5); // Four milestones plus one failed attempt.
+    const [member] = await sql`select id from members where slack_user_id = 'U_L31'`;
+    const actor = { id: member.id, slackUserId: "U_L31", displayName: "Reader", role: "member" as const, isActive: true };
+    await repository.setReportLike(report.id, actor, false);
+    await repository.setReportLike(report.id, actor, true);
+    await processLikeNotifications();
+    expect(state.postMessage).toHaveBeenCalledTimes(5);
   });
 
   it("does not resurrect a report deleted on the Web when Slack is edited", async () => {

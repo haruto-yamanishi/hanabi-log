@@ -164,10 +164,27 @@ Event Subscriptionsのbot eventsへ `reaction_added` と `reaction_removed` を�
 - 日報に紐づいたSlackの親投稿へのスタンプは、種類を問わずいいねとして数えます。WebからSlackへ配信した日報も対象です。
 - 同じ人の複数スタンプとWebのいいねは合計1件。スタンプをすべて外してもWebのいいねが残れば1件を維持し、逆も同様です。
 - WebのボタンはWeb側のいいねを操作し、人数とメンバー一覧はSlackとの合計を表示します。
-- 過去のスタンプは遡って取得しません。有効化後に追加・削除されたスタンプから反映します。
+- 過去のスタンプは、管理画面の「同期管理」から一括取り込みできます。通常は追加・削除イベントで反映します。
 
 必要な場合のローカルDB検証（空のローカルPostgreSQLテストDBを指定。本番の `DATABASE_URL` は使いません）:
 
 ```bash
 SLACK_SYNC_TEST_DATABASE_URL=postgres://USER@127.0.0.1:PORT/EMPTY_TEST_DB npm run test -- src/server/integrations/slack-sync-db.test.ts
 ```
+
+
+### 過去スタンプの取り込み・いいねのDM通知
+
+`supabase/migrations/202609070002_like_notifications.sql` を適用してデプロイします。
+追加の環境変数やSlack権限は不要です。既存の `reactions:read`・`users:read`・`chat:write` を使用します。
+
+管理画面 → 同期管理 → **過去のスタンプを取り込む** を押すと、Web日報に紐づいたSlackの親投稿を順番に取り込みます。
+画面を閉じたりエラーで止まった場合も、再度押すと未取得分から再開します。Slackイベントで受信済みの追加・削除を優先し、Webいいねは維持します。
+対象はSlackから現在取得できるスタンプです。[reactions.get](https://docs.slack.dev/reference/methods/reactions.get/)に `full: true` を指定し、
+返されたユーザー数がスタンプ人数に足りない場合は、重複人数を推測せずエラーにします。
+
+公開日報のいいねが **5・10・20・30人を超えたとき（6・11・21・31人）**、その日報の投稿者にSlack DMを送ります。
+WebとSlackの合計人数を使い、同じ日報の同じ節目はDBに一度だけ登録します。
+過去スタンプの取り込みや既存いいねも対象で、一度に複数の節目を超えた場合は最高の節目を1通で通知します。
+通知の送信失敗は記録を残し、5分経過後のイベント受信・Webいいね・既存Cronで再試行します。
+送信状況はSupabaseの `report_like_notifications`（`sent_at`・`last_error`）とVercelログの `Slack like milestone DM failed` で確認できます。

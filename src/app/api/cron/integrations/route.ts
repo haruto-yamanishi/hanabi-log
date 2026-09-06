@@ -6,6 +6,8 @@ import { processPendingJobs } from "@/server/integrations/outbox";
 
 import { processIncomingSlackReports } from "@/server/integrations/slack-incoming-store";
 
+import { processLikeNotifications } from "@/server/integrations/like-notifications";
+
 function authorized(request: Request): boolean {
   if (isDemoMode && !env.CRON_SECRET) return true;
   const supplied =
@@ -22,6 +24,7 @@ export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     if (!authorized(request)) throw new AppError("UNAUTHORIZED", "Cron認証に失敗しました", 401);
     await processIncomingSlackReports();
+    await processLikeNotifications();
     const result = await processPendingJobs();
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "@/lib/types";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/server/integrations/like-notifications", () => ({ scheduleLikeNotifications: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),

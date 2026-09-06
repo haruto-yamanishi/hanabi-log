@@ -68,6 +68,7 @@ export function AdminScreen() {
   const [tab, setTab] = useState<AdminTab>("approvals");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [importingReactions, setImportingReactions] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotionNotice);
@@ -130,6 +131,32 @@ export function AdminScreen() {
     [reports],
   );
   const deliveredReportCount = reports.length - pendingApprovals.length;
+
+  async function importReactions() {
+    if (importingReactions) return;
+    setImportingReactions(true);
+    setError(null);
+    try {
+      let remaining = 1;
+      let pending = 0;
+      let previousPending: number | null = null;
+      while (remaining > 0 || pending > 0) {
+        const result = await apiRequest<{ remaining: number; pending: number }>("/api/integrations/slack/reactions/import", { method: "POST" });
+        remaining = result.remaining;
+        pending = result.pending;
+        if (remaining === 0 && pending > 0 && previousPending === pending) {
+          throw new Error("一部の集計が完了していません。Slack権限とログを確認し、再度取り込んでください。");
+        }
+        previousPending = remaining === 0 ? pending : null;
+        setNotice(remaining > 0 ? `過去のスタンプを取り込み中（残り${remaining}投稿）` : pending > 0 ? `いいねを集計中（残り${pending}件）` : "過去のスタンプの取り込みが完了しました。");
+        if (remaining > 0 || pending > 0) await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "スタンプの取り込みに失敗しました。再度押すと続きから再開します。");
+    } finally {
+      setImportingReactions(false);
+    }
+  }
 
   async function retry(issue: SyncIssue) {
     const key = `${issue.report.id}-${issue.target}`;
@@ -283,6 +310,16 @@ export function AdminScreen() {
 
           {tab === "sync" ? (
             <section aria-labelledby="sync-heading" className="admin-panel">
+              <div className="integration-connection-card">
+                <div className="integration-connection-card__copy">
+                  <strong>Slackの過去スタンプ</strong>
+                  <p>Webの日報に紐づく投稿から取り込みます。同じ人は1件として集計します。</p>
+                  <small>いいねの節目を超えた日報は、投稿者にDMで通知します。</small>
+                </div>
+                <button className="button button--secondary button--small" disabled={importingReactions} onClick={() => void importReactions()} type="button">
+                  {importingReactions ? "取り込み中…" : "過去のスタンプを取り込む"}
+                </button>
+              </div>
               <div className="integration-connection-card">
                 <span className="integration-logo integration-logo--notion">N</span>
                 <div className="integration-connection-card__copy">
