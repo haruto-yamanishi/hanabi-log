@@ -36,11 +36,18 @@ export function InitialLoadingScreen() {
         <HanabiLogo className="initial-loading__image" />
         <svg aria-hidden="true" className="initial-loading__arch" viewBox="0 0 100 72.86" preserveAspectRatio="none">
           <defs>
-            <clipPath id="initial-loading-arch-reveal">
-              <rect className="initial-loading__arch-reveal" height="72.86" width="0" x="0" y="0" />
-            </clipPath>
+            <mask id="initial-loading-arch-reveal" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="72.86">
+              <path
+                className="initial-loading__arch-reveal"
+                d="M 1.935 51.94 A 48.065 50.005 0 0 1 98.065 51.94"
+                fill="none"
+                pathLength="1"
+                stroke="white"
+                strokeWidth="6"
+              />
+            </mask>
           </defs>
-          <path className="initial-loading__arch-progress" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 L 96.13 51.94 A 46.13 48.07 0 0 0 3.87 51.94 Z" clipPath="url(#initial-loading-arch-reveal)" />
+          <path className="initial-loading__arch-progress" d="M 0 51.94 A 50 51.94 0 0 1 100 51.94 L 96.13 51.94 A 46.13 48.07 0 0 0 3.87 51.94 Z" mask="url(#initial-loading-arch-reveal)" />
         </svg>
       </div>
     </div>
