@@ -256,6 +256,10 @@ export class SlackReportService implements SlackReportIntegration {
     report: Report,
     binding: IntegrationBinding | null,
   ): Promise<SlackSyncResult> {
+    if (binding?.slackSourceMessage && binding.slackChannelId && binding.slackMessageTs) {
+      return { channelId: binding.slackChannelId, messageTs: binding.slackMessageTs,
+        permalink: binding.slackPermalink ?? null, operation: "updated" };
+    }
     const preparedReport = this.prepareReport
       ? await this.prepareReport(report)
       : report;
@@ -325,6 +329,7 @@ export class SlackReportService implements SlackReportIntegration {
   }
 
   async remove(binding: IntegrationBinding | null): Promise<void> {
+    if (binding?.slackSourceMessage) return;
     if (!binding?.slackChannelId || !binding.slackMessageTs) return;
     await this.api.deleteMessage({
       channel: binding.slackChannelId,

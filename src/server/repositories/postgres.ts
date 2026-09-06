@@ -299,7 +299,7 @@ export class PostgresReportRepository implements ReportRepository {
       `,
       this.sql<IntegrationBindingRow[]>`
         select report_id, notion_page_id, notion_page_url, notion_status, notion_last_error,
-               slack_channel_id, slack_message_ts, slack_permalink, slack_status,
+               slack_channel_id, slack_message_ts, slack_permalink, slack_source_message, slack_status,
                slack_last_error, updated_at
         from integration_bindings
         where report_id in ${this.sql(ids)}
@@ -1074,7 +1074,7 @@ export class PostgresReportRepository implements ReportRepository {
   async getBinding(reportId: string): Promise<IntegrationBinding | null> {
     const rows = await this.sql<IntegrationBindingRow[]>`
       select report_id, notion_page_id, notion_page_url, notion_status, notion_last_error,
-             slack_channel_id, slack_message_ts, slack_permalink, slack_status,
+             slack_channel_id, slack_message_ts, slack_permalink, slack_source_message, slack_status,
              slack_last_error, updated_at
       from integration_bindings where report_id = ${reportId}
     `;

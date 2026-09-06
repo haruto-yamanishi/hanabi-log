@@ -4,6 +4,8 @@ import { env, isDemoMode } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { processPendingJobs } from "@/server/integrations/outbox";
 
+import { processIncomingSlackReports } from "@/server/integrations/slack-incoming-store";
+
 function authorized(request: Request): boolean {
   if (isDemoMode && !env.CRON_SECRET) return true;
   const supplied =
@@ -19,6 +21,7 @@ function authorized(request: Request): boolean {
 export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     if (!authorized(request)) throw new AppError("UNAUTHORIZED", "Cron認証に失敗しました", 401);
+    await processIncomingSlackReports();
     const result = await processPendingJobs();
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   });

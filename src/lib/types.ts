@@ -74,6 +74,7 @@ export interface IntegrationBinding {
   notionLastError?: string | null;
   slackChannelId?: string | null;
   slackMessageTs?: string | null;
+  slackSourceMessage?: boolean;
   slackPermalink?: string | null;
   slackStatus: DeliveryStatus;
   slackLastError?: string | null;

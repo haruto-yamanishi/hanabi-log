@@ -339,3 +339,21 @@ describe("SlackReportService", () => {
     });
   });
 });
+
+it("keeps a member's original Slack post intact during Web edits and deletion", async () => {
+  const api: SlackApiPort = {
+    postMessage: vi.fn(), updateMessage: vi.fn(), deleteMessage: vi.fn(),
+    getPermalink: vi.fn(), getReplyCount: vi.fn(),
+  };
+  const service = new SlackReportService(api, "C_REPORTS", "https://log.example.test");
+  const binding: IntegrationBinding = {
+    reportId: "report-1", slackChannelId: "C_REPORTS", slackMessageTs: "123.456",
+    slackSourceMessage: true, slackPermalink: "https://slack.example.test/post",
+    slackStatus: "delivered", notionStatus: "pending", updatedAt: "2026-09-07T00:00:00Z",
+  };
+  expect((await service.sync(report(), binding)).messageTs).toBe("123.456");
+  await service.remove(binding);
+  expect(api.postMessage).not.toHaveBeenCalled();
+  expect(api.updateMessage).not.toHaveBeenCalled();
+  expect(api.deleteMessage).not.toHaveBeenCalled();
+});

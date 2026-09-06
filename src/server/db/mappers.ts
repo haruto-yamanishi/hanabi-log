@@ -80,6 +80,7 @@ export interface IntegrationBindingRow {
   notion_last_error: string | null;
   slack_channel_id: string | null;
   slack_message_ts: string | null;
+  slack_source_message?: boolean;
   slack_permalink: string | null;
   slack_status: IntegrationBinding["slackStatus"];
   slack_last_error: string | null;
@@ -184,6 +185,7 @@ export function mapIntegrationBinding(row: IntegrationBindingRow): IntegrationBi
     notionLastError: row.notion_last_error,
     slackChannelId: row.slack_channel_id,
     slackMessageTs: row.slack_message_ts,
+    slackSourceMessage: row.slack_source_message ?? false,
     slackPermalink: row.slack_permalink,
     slackStatus: row.slack_status,
     slackLastError: row.slack_last_error,

@@ -130,3 +130,23 @@ git push -u origin feature/report-search
 ```
 
 秘密情報を含む `.env.local` はGit管理対象外です。token、本文、メール、署名URLをログやfixtureへ追加しないでください。
+
+## Slackへの直接投稿を日報として取り込む
+
+日報チャンネルの新しい本文付き投稿を、自動でWebの日報として登録します。書式の指定は不要です。
+本文全体を「今日やったこと」、活動領域を「その他」、内容カテゴリを「進捗」として保存し、
+投稿日（日本時間）を日報の日付にします。Activeメンバーは公開・日報実績への計上・Notion同期まで自動で進み、
+Inactiveメンバーは従来どおり承認待ちになります。Web未ログインの投稿者もSlack IDで登録し、後のログイン時に同じメンバーへ紐づきます。
+
+有効化手順:
+
+1. `supabase/migrations/202609060001_slack_incoming_reports.sql` をDBへ適用し、アプリをデプロイします。
+2. Slack AppのBasic InformationにあるSigning Secretを、環境変数 `SLACK_SIGNING_SECRET` に設定して再デプロイします。
+3. Bot scopeに `users:read` と、公開チャンネルなら `channels:history`、非公開なら `groups:history` を追加し、ワークスペースへ再インストールします。
+4. Event Subscriptionsを有効にし、Request URLを `${APP_BASE_URL}/api/integrations/slack/events` にします。
+5. Subscribe to bot eventsに公開なら `message.channels`、非公開なら `message.groups` を登録します。Botは `SLACK_CHANNEL_ID` のチャンネルに参加させてください。
+
+[Slack公式のEvents API仕様](https://docs.slack.dev/apis/events-api/)に合わせ、署名を確認し、受信をDBへ保存して応答した後に取り込みます。
+重複したイベントでも日報は増えません。処理失敗時は受信データを残し、次のイベント受信時または既存の毎日Cronで再試行します。
+Bot投稿、スレッド返信、本文のない投稿は対象外です。過去投稿の一括取り込み、添付ファイルのコピー、Slack上の編集・削除の追従は行いません。
+Webで取り込んだ日報を編集・削除しても、本人が書いたSlack原文は保持します。
