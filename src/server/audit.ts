@@ -45,7 +45,10 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
   const sql = getDatabase();
   const before = input.before === undefined ? null : sanitizeAuditValue(input.before);
   const after = input.after === undefined ? null : sanitizeAuditValue(input.after);
-  const metadata = sanitizeAuditValue(input.metadata ?? {}) as Record<string, unknown>;
+  const metadata = sanitizeAuditValue(input.metadata ?? {});
+  const beforeJson = before === null ? null : JSON.stringify(before);
+  const afterJson = after === null ? null : JSON.stringify(after);
+  const metadataJson = JSON.stringify(metadata);
 
   await sql`insert into audit_events
     (actor_member_id, actor_role, action, target_type, target_id, source, request_id, before_json, after_json, metadata_json)
@@ -57,8 +60,8 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
       ${input.targetId ?? null},
       ${input.source ?? "web"},
       ${input.requestId ?? null},
-      ${before ? sql.json(before) : null},
-      ${after ? sql.json(after) : null},
-      ${sql.json(metadata)}
+      ${beforeJson}::jsonb,
+      ${afterJson}::jsonb,
+      ${metadataJson}::jsonb
     )`;
 }
