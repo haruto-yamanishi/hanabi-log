@@ -3,6 +3,7 @@ import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { scheduleReportJobs } from "@/server/integrations/schedule";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 
 interface RouteContext {
@@ -14,6 +15,7 @@ const targetSchema = z.enum(["slack", "notion"]);
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "integration");
     const parameters = await context.params;
     const id = reportId(parameters.id);
     const target = targetSchema.parse(parameters.target);
