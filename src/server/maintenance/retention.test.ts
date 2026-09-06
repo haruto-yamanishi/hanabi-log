@@ -19,6 +19,7 @@ describe("operational retention", () => {
       deadOutbox: 365,
       processedSlackEvents: 180,
       processedSlackReactions: 180,
+      rateLimitWindows: 1,
     });
   });
 
@@ -29,6 +30,7 @@ describe("operational retention", () => {
       deadOutbox: 0,
       processedSlackEvents: 0,
       processedSlackReactions: 0,
+      rateLimitWindows: 0,
     });
   });
 });
