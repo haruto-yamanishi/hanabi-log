@@ -29,6 +29,8 @@ const schema = z.object({
   NOTION_OAUTH_CLIENT_ID: optional,
   NOTION_OAUTH_CLIENT_SECRET: optional,
   NOTION_TOKEN_ENCRYPTION_KEY: optional,
+  NOTION_TOKEN_ENCRYPTION_KEY_ID: optional,
+  NOTION_TOKEN_DECRYPTION_KEYS: optional,
   NOTION_API_VERSION: z.string().default("2026-03-11"),
   NOTION_DATABASE_ID: z.string().default("212fffe9-1997-4b7c-a631-13629baa8977"),
   NOTION_DATA_SOURCE_ID: z.string().default("aff207bb-2f47-4f19-beba-ae9556bdf442"),
