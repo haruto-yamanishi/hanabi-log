@@ -7,6 +7,7 @@ import { processPendingJobs } from "@/server/integrations/outbox";
 import { processIncomingSlackReports } from "@/server/integrations/slack-incoming-store";
 
 import { processLikeNotifications } from "@/server/integrations/like-notifications";
+import { cleanupOperationalData } from "@/server/maintenance/retention";
 
 function authorized(request: Request): boolean {
   if (isDemoMode && !env.CRON_SECRET) return true;
@@ -26,7 +27,8 @@ export async function POST(request: Request): Promise<Response> {
     await processIncomingSlackReports();
     await processLikeNotifications();
     const result = await processPendingJobs();
-    return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+    const cleanup = await cleanupOperationalData();
+    return Response.json({ ...result, cleanup }, { headers: { "Cache-Control": "no-store" } });
   });
 }
 
