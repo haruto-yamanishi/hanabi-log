@@ -3,6 +3,7 @@ import { WebClient } from "@slack/web-api";
 import { getDatabase } from "@/server/db/client";
 import { env, isDemoMode } from "@/server/env";
 import { resolveReportTitle } from "@/lib/report-title";
+import { toHanabiReportDate } from "@/lib/timezone";
 
 export async function processIncomingSlackReports(): Promise<void> {
   if (isDemoMode || !env.SLACK_TEAM_ID || !env.SLACK_BOT_TOKEN) return;
@@ -43,7 +44,7 @@ export async function processIncomingSlackReports(): Promise<void> {
         const [member] = await tx`select * from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${candidate.user_id}`;
         const published = member.is_active || member.role === "admin";
         const occurredAt = new Date(Number(message.message_ts) * 1000);
-        const reportDate = new Date(occurredAt.getTime() + 9 * 3600000).toISOString().slice(0, 10);
+        const reportDate = toHanabiReportDate(occurredAt);
         const [report] = await tx`insert into reports (author_id, report_date, title, summary, activity_area, content_category, activity_text, status, published_at)
           values (${member.id}, ${reportDate}, ${resolveReportTitle("", member.display_name)}, ${Array.from(body).slice(0, 100).join("")}, 'その他', '進捗', ${body}, ${published ? "published" : "pending_approval"}, ${published ? occurredAt : null}) returning id`;
         const permalink = `https://app.slack.com/archives/${message.channel_id}/p${message.message_ts.replace(".", "")}`;
