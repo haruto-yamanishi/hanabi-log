@@ -1,7 +1,7 @@
 /* Only cache the public offline screen. Reports, API responses and OAuth stay network-only. */
-const CACHE = "hanabi-offline-v1";
+const CACHE = "hanabi-offline-v2";
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/offline.html", "/offline.js"])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/offline.html"])));
   self.skipWaiting();
 });
 self.addEventListener("activate", (event) => {
@@ -13,10 +13,6 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname === "/offline.js") {
-    event.respondWith(caches.match("/offline.js").then((cached) => cached || fetch(event.request)));
-    return;
-  }
   if (event.request.mode !== "navigate" || event.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
   event.respondWith((async () => {
     const controller = new AbortController();

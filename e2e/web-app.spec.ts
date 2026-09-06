@@ -91,7 +91,7 @@ test("manifest・アイコンと公開オフライン画面のキャッシュを
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   const privateCaches = await page.evaluate(async () => {
     const entries = await Promise.all((await caches.keys()).map(async (key) => (await (await caches.open(key)).keys()).map((request) => new URL(request.url).pathname)));
-    return entries.flat().filter((path) => !["/offline.html", "/offline.js"].includes(path));
+    return entries.flat().filter((path) => !["/offline.html"].includes(path));
   });
   expect(privateCaches).toEqual([]);
 });
@@ -105,7 +105,7 @@ test("Chromiumでオフライン画面から再接続後に復帰する", async 
   await page.reload();
   await expect(page.getByRole("heading", { name: "Hanabi LOGに接続できません" })).toBeVisible();
   await context.setOffline(false);
-  await page.getByRole("button", { name: "再読み込み", exact: true }).click();
+  await page.getByRole("link", { name: "再読み込み", exact: true }).click();
   await expect(page.locator(".home-hero")).toBeVisible();
 });
 
@@ -143,7 +143,7 @@ test("同期中の詳細を表示したまま同期済みへ更新する", async
 
 test("WebKitで実際の接続切断時にオフライン画面へ移り復帰する", async ({ page, browserName }) => {
   test.skip(browserName !== "webkit", "WebKitのsetOfflineはSWより前にナビゲーションを中断するため、接続を実際に切る");
-  const assets = new Map(await Promise.all(["/sw.js", "/offline.html", "/offline.js"].map(async (path) => [path, await readFile(`public${path}`)] as const)));
+  const assets = new Map(await Promise.all(["/sw.js", "/offline.html"].map(async (path) => [path, await readFile(`public${path}`)] as const)));
   let reachable = true;
   const server = createServer((request, response) => {
     if (!reachable) { request.socket.destroy(); return; }
@@ -163,10 +163,19 @@ test("WebKitで実際の接続切断時にオフライン画面へ移り復帰�
     await page.reload();
     await expect(page.getByRole("heading", { name: "Hanabi LOGに接続できません" })).toBeVisible();
     reachable = true;
-    await page.getByRole("button", { name: "再読み込み", exact: true }).click();
+    await page.getByRole("link", { name: "再読み込み", exact: true }).click();
     await expect(page.getByRole("heading", { name: "接続しました", exact: true })).toBeVisible();
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
+});
+
+
+test("初回ホーム表示でhydrationエラーが発生しない", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openPage(page, "/");
+  await expect(page.locator(".home-hero__date")).toHaveText(/月.*日 .*曜日/);
+  expect(errors).toEqual([]);
 });

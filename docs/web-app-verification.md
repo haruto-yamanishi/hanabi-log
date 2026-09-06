@@ -10,7 +10,7 @@
 
 ## オフラインとデータ
 
-Service Workerが保存するのは公開の `/offline.html` と `/offline.js` だけ。認証済みページ・日報・API・OAuthレスポンスをCache Storageに保存しない。通常の文書ナビゲーションが失敗、8秒を超過、またはHTTP 5xxの場合は専用画面から再読み込みできる。APIやOAuthのURLはWorkerの処理対象外。表示中に接続が切れた場合は入力を保持して通知する。
+Service Workerが保存するのは公開の `/offline.html` だけ。認証済みページ・日報・API・OAuthレスポンスをCache Storageに保存しない。通常の文書ナビゲーションが失敗、8秒を超過、またはHTTP 5xxの場合は専用画面のネイティブリンクから再読み込みできる。再試行はJavaScriptの読み込みに依存しない。APIやOAuthのURLはWorkerの処理対象外。表示中に接続が切れた場合は入力を保持して通知する。
 
 下書きはDBで削除が確定してから添付を除去する。これにより同時公開された日報の画像を消さない。ストレージ側の除去失敗はサーバーログ `Deleted draft attachment cleanup failed` に記録する。日報は削除済みで、失敗した添付オブジェクトの後処理は必要になる。
 
