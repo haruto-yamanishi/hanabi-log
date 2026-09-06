@@ -33,6 +33,8 @@ interface RateLimitCounterRow {
   request_count: number;
 }
 
+type RateLimitEnvironment = Record<string, string | undefined>;
+
 export interface RateLimitDecision {
   bucket: RateLimitBucket;
   limit: number;
@@ -42,7 +44,7 @@ export interface RateLimitDecision {
 
 export function configuredRateLimit(
   bucket: RateLimitBucket,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: RateLimitEnvironment = process.env,
 ): number {
   const raw = environment[ENV_KEYS[bucket]]?.trim();
   if (!raw) return DEFAULT_LIMITS[bucket];
