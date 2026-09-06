@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { scheduleReportJobs } from "@/server/integrations/schedule";
 import { getReportRepository } from "@/server/repositories";
@@ -17,6 +18,13 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const id = reportId(parameters.id);
     const target = targetSchema.parse(parameters.target);
     const report = await getReportRepository().requestIntegrationRetry(id, target, user);
+    await recordAuditEvent({
+      actor: user,
+      action: "integration.retry_requested",
+      targetType: "report_integration",
+      targetId: `${id}:${target}`,
+      metadata: { reportId: id, integrationTarget: target },
+    });
     scheduleReportJobs(id);
     return reportResponse(report, request);
   });
