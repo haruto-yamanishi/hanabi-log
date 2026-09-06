@@ -36,14 +36,47 @@ const schema = z.object({
   CRON_SECRET: optional,
 });
 
+type NodeEnvironment = z.infer<typeof schema>["NODE_ENV"];
+type DemoModeValue = z.infer<typeof schema>["DEMO_MODE"];
+
+interface DemoModeRuntime {
+  nodeEnv: NodeEnvironment;
+  demoMode?: DemoModeValue;
+  databaseUrl?: string;
+}
+
+export function resolveDemoMode({
+  nodeEnv,
+  demoMode,
+  databaseUrl,
+}: DemoModeRuntime): boolean {
+  if (nodeEnv === "production") return false;
+  return demoMode === "true" || (!demoMode && !databaseUrl);
+}
+
+export function assertDemoModeAllowedInProduction({
+  nodeEnv,
+  demoMode,
+}: Pick<DemoModeRuntime, "nodeEnv" | "demoMode">): void {
+  if (nodeEnv === "production" && demoMode === "true") {
+    throw new Error("DEMO_MODE must never be enabled in production");
+  }
+}
+
 export const env = schema.parse(process.env);
 
-export const isDemoMode =
-  env.DEMO_MODE === "true" ||
-  (env.NODE_ENV !== "production" && !env.DEMO_MODE && !env.DATABASE_URL);
+export const isDemoMode = resolveDemoMode({
+  nodeEnv: env.NODE_ENV,
+  demoMode: env.DEMO_MODE,
+  databaseUrl: env.DATABASE_URL,
+});
 
 export function assertProductionEnv(): void {
-  if (env.NODE_ENV !== "production" || isDemoMode) return;
+  assertDemoModeAllowedInProduction({
+    nodeEnv: env.NODE_ENV,
+    demoMode: env.DEMO_MODE,
+  });
+  if (env.NODE_ENV !== "production") return;
   const required = [
     "APP_BASE_URL",
     "AUTH_SECRET",
