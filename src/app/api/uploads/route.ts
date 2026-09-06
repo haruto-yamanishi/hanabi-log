@@ -7,10 +7,12 @@ import {
   readDemoObject,
 } from "@/server/db/storage";
 import { AppError } from "@/server/errors";
+import { enforceRateLimit } from "@/server/rate-limit";
 
 export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "upload");
     const input = uploadRequestSchema.parse(await requestJson(request));
     const origin = new URL(request.url).origin;
     const upload = await createSignedUpload(user, input, origin);
@@ -35,7 +37,8 @@ export async function PUT(request: Request): Promise<Response> {
 
 export async function GET(request: Request): Promise<Response> {
   return apiResponse(async () => {
-    await requireCurrentUser();
+    const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "read");
     const url = new URL(request.url);
     const token = url.searchParams.get("token");
     const object = token && url.searchParams.get("mode") === "read" ? readDemoObject(token) : null;
