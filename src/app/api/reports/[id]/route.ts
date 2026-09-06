@@ -9,6 +9,7 @@ import {
   reportResponse,
   requestJson,
 } from "@/app/api/_shared";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { scheduleReportJobs } from "@/server/integrations/schedule";
 import { getReportRepository } from "@/server/repositories";
@@ -51,6 +52,14 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
       input.version,
       input.report,
     );
+    await recordAuditEvent({
+      actor: user,
+      action: "report.edited",
+      targetType: "report",
+      targetId: id,
+      before: { status: existing.status, version: existing.version },
+      after: { status: report.status, version: report.version },
+    });
     if (report.status === "published") scheduleReportJobs(id);
     return reportResponse(report, request);
   });
@@ -79,6 +88,13 @@ export async function DELETE(_request: Request, context: RouteContext): Promise<
       await deleteReportResources(report);
       await repository.deleteReport(id, user);
     }
+    await recordAuditEvent({
+      actor: user,
+      action: "report.deleted",
+      targetType: "report",
+      targetId: id,
+      before: { status: report.status, version: report.version },
+    });
     return new Response(null, {
       status: 204,
       headers: { "Cache-Control": "private, no-store" },
