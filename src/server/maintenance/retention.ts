@@ -8,6 +8,7 @@ export const RETENTION_DAYS = {
   deadOutbox: 365,
   processedSlackEvents: 180,
   processedSlackReactions: 180,
+  rateLimitWindows: 1,
 } as const;
 
 export interface RetentionCleanupSummary {
@@ -16,6 +17,7 @@ export interface RetentionCleanupSummary {
   deadOutbox: number;
   processedSlackEvents: number;
   processedSlackReactions: number;
+  rateLimitWindows: number;
 }
 
 function emptySummary(): RetentionCleanupSummary {
@@ -25,6 +27,7 @@ function emptySummary(): RetentionCleanupSummary {
     deadOutbox: 0,
     processedSlackEvents: 0,
     processedSlackReactions: 0,
+    rateLimitWindows: 0,
   };
 }
 
@@ -80,11 +83,20 @@ export async function cleanupOperationalData(
       limit ${limit}
     ) returning 1`;
 
+  const rateLimitWindows = await sql`delete from api_rate_limit_windows
+    where ctid in (
+      select ctid from api_rate_limit_windows
+      where window_start < now() - interval '1 day'
+      order by window_start
+      limit ${limit}
+    ) returning 1`;
+
   return {
     idempotencyKeys: idempotencyKeys.length,
     deliveredOutbox: deliveredOutbox.length,
     deadOutbox: deadOutbox.length,
     processedSlackEvents: processedSlackEvents.length,
     processedSlackReactions: processedSlackReactions.length,
+    rateLimitWindows: rateLimitWindows.length,
   };
 }
