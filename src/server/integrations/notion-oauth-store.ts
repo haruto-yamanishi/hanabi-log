@@ -3,8 +3,10 @@ import { getDatabase } from "@/server/db/client";
 import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import {
-  decryptNotionToken,
-  encryptNotionToken,
+  decryptNotionTokenWithKeyring,
+  encryptNotionTokenWithKeyring,
+  notionTokenNeedsRotation,
+  type NotionTokenKeyring,
 } from "@/server/integrations/notion-oauth-crypto";
 
 interface NotionOAuthConnectionRow {
@@ -57,7 +59,7 @@ export interface SaveNotionOAuthConnectionInput {
   connectedByMemberId?: string | null;
 }
 
-function key(): string {
+function currentKey(): string {
   if (!env.NOTION_TOKEN_ENCRYPTION_KEY) {
     throw new AppError(
       "NOTION_ENCRYPTION_NOT_CONFIGURED",
@@ -68,6 +70,32 @@ function key(): string {
   return env.NOTION_TOKEN_ENCRYPTION_KEY;
 }
 
+export function parseNotionTokenDecryptionKeys(value?: string): Record<string, string> {
+  if (!value) return {};
+  const result: Record<string, string> = {};
+  for (const rawEntry of value.split(",")) {
+    const entry = rawEntry.trim();
+    if (!entry) continue;
+    const separator = entry.indexOf(":");
+    if (separator <= 0 || separator === entry.length - 1) {
+      throw new Error("NOTION_TOKEN_DECRYPTION_KEYS must use key-id:base64 entries");
+    }
+    const id = entry.slice(0, separator).trim();
+    const key = entry.slice(separator + 1).trim();
+    if (result[id]) throw new Error(`Duplicate Notion token decryption key id: ${id}`);
+    result[id] = key;
+  }
+  return result;
+}
+
+function keyring(): NotionTokenKeyring {
+  return {
+    currentId: env.NOTION_TOKEN_ENCRYPTION_KEY_ID ?? "primary",
+    currentKey: currentKey(),
+    decryptionKeys: parseNotionTokenDecryptionKeys(env.NOTION_TOKEN_DECRYPTION_KEYS),
+  };
+}
+
 function context(botId: string, token: "access" | "refresh"): string {
   return `notion:${botId}:${token}`;
 }
@@ -76,8 +104,10 @@ function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function mapConnection(row: NotionOAuthConnectionRow): NotionOAuthConnection {
-  const encryptionKey = key();
+function mapConnection(
+  row: NotionOAuthConnectionRow,
+  tokenKeyring: NotionTokenKeyring,
+): NotionOAuthConnection {
   return {
     workspaceId: row.workspace_id,
     workspaceName: row.workspace_name,
@@ -85,15 +115,15 @@ function mapConnection(row: NotionOAuthConnectionRow): NotionOAuthConnection {
     botId: row.bot_id,
     ownerUserId: row.owner_user_id,
     ownerUserName: row.owner_user_name,
-    accessToken: decryptNotionToken(
+    accessToken: decryptNotionTokenWithKeyring(
       row.access_token_ciphertext,
-      encryptionKey,
+      tokenKeyring,
       context(row.bot_id, "access"),
     ),
     refreshToken: row.refresh_token_ciphertext
-      ? decryptNotionToken(
+      ? decryptNotionTokenWithKeyring(
           row.refresh_token_ciphertext,
-          encryptionKey,
+          tokenKeyring,
           context(row.bot_id, "refresh"),
         )
       : null,
@@ -101,6 +131,48 @@ function mapConnection(row: NotionOAuthConnectionRow): NotionOAuthConnection {
     connectedAt: iso(row.connected_at),
     updatedAt: iso(row.updated_at),
   };
+}
+
+async function rotateConnectionCiphertextIfNeeded(
+  row: NotionOAuthConnectionRow,
+  connection: NotionOAuthConnection,
+  tokenKeyring: NotionTokenKeyring,
+): Promise<void> {
+  const accessNeedsRotation = notionTokenNeedsRotation(
+    row.access_token_ciphertext,
+    tokenKeyring,
+  );
+  const refreshNeedsRotation = Boolean(
+    row.refresh_token_ciphertext &&
+      notionTokenNeedsRotation(row.refresh_token_ciphertext, tokenKeyring),
+  );
+  if (!accessNeedsRotation && !refreshNeedsRotation) return;
+
+  const accessCiphertext = encryptNotionTokenWithKeyring(
+    connection.accessToken,
+    tokenKeyring,
+    context(row.bot_id, "access"),
+  );
+  const refreshCiphertext = connection.refreshToken
+    ? encryptNotionTokenWithKeyring(
+        connection.refreshToken,
+        tokenKeyring,
+        context(row.bot_id, "refresh"),
+      )
+    : null;
+
+  try {
+    await getDatabase()`update notion_oauth_connections
+      set access_token_ciphertext = ${accessCiphertext},
+          refresh_token_ciphertext = ${refreshCiphertext},
+          updated_at = now()
+      where id = 'primary'
+        and access_token_ciphertext = ${row.access_token_ciphertext}`;
+  } catch (error) {
+    // Decryption succeeded, so a transient rotation write must not break Notion use.
+    // Keep previous keys configured until every stored token has migrated.
+    console.error("Notion OAuth token re-encryption failed", { error });
+  }
 }
 
 export async function getNotionOAuthConnection(): Promise<NotionOAuthConnection | null> {
@@ -113,7 +185,12 @@ export async function getNotionOAuthConnection(): Promise<NotionOAuthConnection 
     from notion_oauth_connections
     where id = 'primary'
   `;
-  return rows[0] ? mapConnection(rows[0]) : null;
+  const row = rows[0];
+  if (!row) return null;
+  const tokenKeyring = keyring();
+  const connection = mapConnection(row, tokenKeyring);
+  await rotateConnectionCiphertextIfNeeded(row, connection, tokenKeyring);
+  return connection;
 }
 
 export async function getNotionOAuthConnectionSummary(): Promise<NotionOAuthConnectionSummary> {
@@ -151,16 +228,16 @@ export async function saveNotionOAuthConnection(
   input: SaveNotionOAuthConnectionInput,
 ): Promise<void> {
   const sql = getDatabase();
-  const encryptionKey = key();
-  const accessCiphertext = encryptNotionToken(
+  const tokenKeyring = keyring();
+  const accessCiphertext = encryptNotionTokenWithKeyring(
     input.accessToken,
-    encryptionKey,
+    tokenKeyring,
     context(input.botId, "access"),
   );
   const refreshCiphertext = input.refreshToken
-    ? encryptNotionToken(
+    ? encryptNotionTokenWithKeyring(
         input.refreshToken,
-        encryptionKey,
+        tokenKeyring,
         context(input.botId, "refresh"),
       )
     : null;
