@@ -4,18 +4,30 @@ import { getDatabase } from "@/server/db/client";
 import { env, isDemoMode } from "@/server/env";
 import { resolveReportTitle } from "@/lib/report-title";
 
+const MAX_INGESTION_ATTEMPTS = 5;
+
 export async function processIncomingSlackReports(): Promise<void> {
   if (isDemoMode || !env.SLACK_TEAM_ID || !env.SLACK_BOT_TOKEN) return;
   const sql = getDatabase();
   const client = new WebClient(env.SLACK_BOT_TOKEN, { retryConfig: { retries: 0 }, timeout: 5000 });
-  const pending = await sql`select * from slack_incoming_reports where processed_at is null order by created_at limit 20`;
+  const pending = await sql`select * from slack_incoming_reports
+    where processed_at is null and dead_at is null and available_at <= now()
+    order by available_at, created_at limit 20`;
   for (const candidate of pending) {
     try {
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID} and slack_user_id = ${candidate.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: candidate.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) continue;
+      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+        await sql`update slack_incoming_reports set dead_at = now(), last_error = 'slack_user_unavailable'
+          where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts}
+            and processed_at is null and dead_at is null`;
+        continue;
+      }
       await sql.begin(async (tx) => {
-        const [message] = await tx`select * from slack_incoming_reports where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts} and processed_at is null for update skip locked`;
+        const [message] = await tx`select * from slack_incoming_reports
+          where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts}
+            and processed_at is null and dead_at is null and available_at <= now()
+          for update skip locked`;
         if (!message) return;
         const body = message.body.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
         if (message.imported) {
@@ -31,7 +43,8 @@ export async function processIncomingSlackReports(): Promise<void> {
               await tx`update integration_bindings set notion_status = 'pending', notion_last_error = null where report_id = ${report.id}`;
             }
           }
-          await tx`update slack_incoming_reports set processed_at = now() where channel_id = ${message.channel_id} and message_ts = ${message.message_ts}`;
+          await tx`update slack_incoming_reports set processed_at = now(), last_error = null
+            where channel_id = ${message.channel_id} and message_ts = ${message.message_ts}`;
           return;
         }
         const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(candidate.user_id);
@@ -55,16 +68,29 @@ export async function processIncomingSlackReports(): Promise<void> {
           await tx`insert into outbox_jobs (report_id, target, action, report_version, dedupe_key)
             values (${report.id}, 'notion', 'publish', 1, ${`${report.id}:notion:publish:1`})`;
         }
-        await tx`update slack_incoming_reports set processed_at = now(), imported = true, report_id = ${report.id}
+        await tx`update slack_incoming_reports set processed_at = now(), imported = true, report_id = ${report.id}, last_error = null
           where channel_id = ${message.channel_id} and message_ts = ${message.message_ts}`;
       });
     } catch {
-      console.error("Slack report import failed; retained for retry", { channel: candidate.channel_id, ts: candidate.message_ts });
+      await sql`update slack_incoming_reports set
+          attempts = attempts + 1,
+          dead_at = case when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then now() else dead_at end,
+          available_at = case
+            when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then available_at
+            when attempts = 0 then now() + interval '5 seconds'
+            when attempts = 1 then now() + interval '15 seconds'
+            when attempts = 2 then now() + interval '30 seconds'
+            when attempts = 3 then now() + interval '1 minute'
+            else now() + interval '5 minutes'
+          end,
+          last_error = case when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then 'retry_exhausted' else 'import_failed' end
+        where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts}
+          and processed_at is null and dead_at is null`;
+      console.error("Slack report import failed; scheduled retry", { channel: candidate.channel_id, ts: candidate.message_ts });
     }
   }
   await processSlackReactions(client);
 }
-
 
 async function processSlackReactions(client: WebClient): Promise<void> {
   const sql = getDatabase();
@@ -72,18 +98,30 @@ async function processSlackReactions(client: WebClient): Promise<void> {
   const pending = await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id
     from slack_report_reactions reaction
     join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = reaction.message_ts
-    where reaction.processed_at is null limit 20`;
+    where reaction.processed_at is null and reaction.dead_at is null and reaction.available_at <= now()
+    limit 20`;
   for (const reaction of pending) {
     try {
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${reaction.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: reaction.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) continue;
+      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+        await sql`update slack_report_reactions set dead_at = now(), last_error = 'slack_user_unavailable'
+          where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+            and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
+        continue;
+      }
       await sql.begin(async (tx) => {
         // Web likes use the same report lock, keeping concurrent toggles consistent.
         const report = await tx`select id from reports where id = ${reaction.report_id} for update`;
-        if (!report.length) return;
+        if (!report.length) {
+          await tx`update slack_report_reactions set dead_at = now(), last_error = 'report_missing'
+            where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+              and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
+          return;
+        }
         const states = await tx`select reaction, active from slack_report_reactions
           where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}
+            and processed_at is null and dead_at is null
           order by reaction for update`;
         if (!existing.length) {
           const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(reaction.user_id);
@@ -102,13 +140,27 @@ async function processSlackReactions(client: WebClient): Promise<void> {
         }
         // Mark only the rows locked above; newly arriving emojis remain pending.
         for (const state of states) {
-          await tx`update slack_report_reactions set processed_at = now()
+          await tx`update slack_report_reactions set processed_at = now(), last_error = null
             where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
               and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
         }
       });
     } catch {
-      console.error("Slack reaction sync failed; retained for retry", { channel: reaction.channel_id, ts: reaction.message_ts });
+      await sql`update slack_report_reactions set
+          attempts = attempts + 1,
+          dead_at = case when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then now() else dead_at end,
+          available_at = case
+            when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then available_at
+            when attempts = 0 then now() + interval '5 seconds'
+            when attempts = 1 then now() + interval '15 seconds'
+            when attempts = 2 then now() + interval '30 seconds'
+            when attempts = 3 then now() + interval '1 minute'
+            else now() + interval '5 minutes'
+          end,
+          last_error = case when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then 'retry_exhausted' else 'sync_failed' end
+        where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+          and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
+      console.error("Slack reaction sync failed; scheduled retry", { channel: reaction.channel_id, ts: reaction.message_ts });
     }
   }
 }
