@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiResponse, requestJson } from "@/app/api/_shared";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import { toPublicMember } from "@/server/members";
@@ -25,25 +26,38 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
     const memberId = memberIdSchema.parse((await context.params).id);
     const update = memberUpdateSchema.parse(await requestJson(request));
     const repository = getReportRepository();
+    const target = await repository.getMember(memberId);
     let member;
+    let auditAction: string;
     if ("role" in update) {
       if (memberId === actor.id && update.role === "member") {
         throw new AppError("SELF_DEMOTION_FORBIDDEN", "自分自身をMemberへ変更することはできません", 409);
       }
       member = await repository.setMemberRole(memberId, update.role);
+      auditAction = "member.role_changed";
     } else {
       if (memberId === actor.id && !update.isActive) {
         throw new AppError("SELF_DEACTIVATION_FORBIDDEN", "自分自身をInactiveへ変更することはできません", 409);
       }
-      const target = await repository.getMember(memberId);
       if (target?.role === "admin" && !update.isActive) {
         throw new AppError("ADMIN_DEACTIVATION_FORBIDDEN", "AdminはInactiveへ変更できません", 409);
       }
       member = target
         ? await repository.setMemberActivity(memberId, update.isActive)
         : null;
+      auditAction = update.isActive ? "member.activated" : "member.deactivated";
     }
     if (!member) throw new AppError("NOT_FOUND", "メンバーが見つかりません", 404);
+
+    await recordAuditEvent({
+      actor,
+      action: auditAction,
+      targetType: "member",
+      targetId: memberId,
+      before: target ? { role: target.role, isActive: target.isActive } : null,
+      after: { role: member.role, isActive: member.isActive },
+    });
+
     return Response.json(toPublicMember(member), {
       headers: { "Cache-Control": "private, no-store" },
     });
@@ -74,7 +88,9 @@ export async function DELETE(_request: Request, context: RouteContext): Promise<
       throw new AppError("SELF_DELETE_FORBIDDEN", "自分自身を削除することはできません", 409);
     }
 
-    const result = await getReportRepository().deleteMember(memberId);
+    const repository = getReportRepository();
+    const target = await repository.getMember(memberId);
+    const result = await repository.deleteMember(memberId);
     if (result === "not_found") {
       throw new AppError("NOT_FOUND", "メンバーが見つかりません", 404);
     }
@@ -85,6 +101,15 @@ export async function DELETE(_request: Request, context: RouteContext): Promise<
         409,
       );
     }
+
+    await recordAuditEvent({
+      actor,
+      action: "member.deleted",
+      targetType: "member",
+      targetId: memberId,
+      before: target ? { role: target.role, isActive: target.isActive } : null,
+    });
+
     return new Response(null, { status: 204 });
   });
 }

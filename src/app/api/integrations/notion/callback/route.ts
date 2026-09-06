@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import {
@@ -32,6 +33,13 @@ export async function GET(request: Request): Promise<Response> {
       );
     }
     await exchangeNotionOAuthCode(code, user.id);
+    await recordAuditEvent({
+      actor: user,
+      action: "notion.connected",
+      targetType: "integration",
+      targetId: "notion",
+      after: { connected: true },
+    });
     return adminRedirect(request, "connected");
   } catch (error) {
     const reason = error instanceof AppError ? error.code : "OAUTH_FAILED";
