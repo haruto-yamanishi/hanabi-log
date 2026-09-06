@@ -261,6 +261,8 @@ strong {
 }
 
 .initial-loading__image {
+  /* Keep the lettering inside the arch; the animated SVG supplies the arch itself. */
+  clip-path: polygon(25% 20%, 75% 20%, 75% 27%, 82% 27%, 82% 100%, 18% 100%, 18% 27%, 25% 27%);
   display: block;
   height: auto;
   width: 100%;
@@ -273,11 +275,6 @@ strong {
   pointer-events: none;
   position: absolute;
   width: 100%;
-}
-
-.initial-loading__arch-cover,
-.initial-loading__arch-progress {
-  fill: #fff;
 }
 
 .initial-loading__arch-progress {
