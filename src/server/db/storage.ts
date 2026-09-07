@@ -1,6 +1,10 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { maxBytesForMimeType } from "@/lib/media";
+import {
+  MEDIA_MIME_TYPES,
+  STORAGE_BUCKET_MAX_BYTES,
+  maxBytesForMimeType,
+} from "@/lib/media";
 import type { CurrentUser, Report } from "@/lib/types";
 import { env, isDemoMode } from "@/server/env";
 import { AppError } from "@/server/errors";
@@ -27,6 +31,7 @@ const globalStorage = globalThis as typeof globalThis & {
   __hanabiDemoUploadGrants?: Map<string, DemoUploadGrant>;
   __hanabiDemoReadGrants?: Map<string, DemoReadGrant>;
   __hanabiDemoObjects?: Map<string, DemoObject>;
+  __hanabiStorageBucketReady?: Promise<void>;
 };
 
 function supabase(): SupabaseClient {
@@ -39,6 +44,33 @@ function supabase(): SupabaseClient {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
   return globalStorage.__hanabiSupabase;
+}
+
+async function ensureStorageBucketConfiguration(): Promise<void> {
+  if (isDemoMode) return;
+  globalStorage.__hanabiStorageBucketReady ??= (async () => {
+    const { error } = await supabase().storage.updateBucket(
+      env.SUPABASE_STORAGE_BUCKET,
+      {
+        public: false,
+        fileSizeLimit: STORAGE_BUCKET_MAX_BYTES,
+        allowedMimeTypes: [...MEDIA_MIME_TYPES],
+      },
+    );
+    if (error) {
+      throw new AppError(
+        "STORAGE_CONFIGURATION_ERROR",
+        "添付ストレージを設定できませんでした",
+        502,
+      );
+    }
+  })();
+  try {
+    await globalStorage.__hanabiStorageBucketReady;
+  } catch (error) {
+    globalStorage.__hanabiStorageBucketReady = undefined;
+    throw error;
+  }
 }
 
 function uploadGrants(): Map<string, DemoUploadGrant> {
@@ -90,6 +122,7 @@ export async function createSignedUpload(
       signedUrl: absoluteApiUrl(origin, new URLSearchParams({ mode: "upload", token })),
     };
   }
+  await ensureStorageBucketConfiguration();
   const { data, error } = await supabase()
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
     .createSignedUploadUrl(storagePath, { upsert: false });

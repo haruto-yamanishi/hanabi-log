@@ -8,6 +8,7 @@ import {
 import {
   MEDIA_MIME_TYPES,
   REPORT_MEDIA_MAX_BYTES,
+  VIDEO_MAX_MIB,
   maxBytesForMimeType,
 } from "@/lib/media";
 import { generateSummary, todayInJst } from "@/lib/text";
@@ -38,7 +39,7 @@ export const attachmentSchema = z.object({
       code: "custom",
       path: ["sizeBytes"],
       message: file.mimeType.startsWith("video/")
-        ? "動画は1件100MiB以内にしてください"
+        ? `動画は1件${VIDEO_MAX_MIB}MiB以内にしてください`
         : "画像は1件5MiB以内にしてください",
     });
   }
@@ -110,7 +111,7 @@ export const uploadRequestSchema = z.object({
       code: "custom",
       path: ["sizeBytes"],
       message: file.mimeType.startsWith("video/")
-        ? "動画は1件100MiB以内にしてください"
+        ? `動画は1件${VIDEO_MAX_MIB}MiB以内にしてください`
         : "画像は1件5MiB以内にしてください",
     });
   }
