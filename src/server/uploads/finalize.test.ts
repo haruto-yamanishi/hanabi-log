@@ -66,6 +66,8 @@ describe("upload finalization", () => {
       sizeBytes: bytes.byteLength,
     };
 
+    await expect(requireUploadVerification(user, input)).rejects.toMatchObject({ code: "UPLOAD_NOT_FINALIZED" });
+
     const finalized = await finalizeStoredUpload(user, input);
     expect(finalized).toMatchObject({
       storagePath,
@@ -98,6 +100,20 @@ describe("upload finalization", () => {
     await expect(readStoredUpload(storagePath)).rejects.toMatchObject({ code: "UPLOAD_NOT_FOUND" });
   });
 
+  it("deletes an object when the filename extension does not match the declared MIME", async () => {
+    const bytes = new Uint8Array(Buffer.from(PNG_1X1, "base64"));
+    const storagePath = await putDemoObject(bytes, "image/png");
+
+    await expect(finalizeStoredUpload(user, {
+      storagePath,
+      filename: "photo.jpg",
+      mimeType: "image/png",
+      sizeBytes: bytes.byteLength,
+    })).rejects.toMatchObject({ code: "INVALID_UPLOAD_CONTENT" });
+
+    await expect(readStoredUpload(storagePath)).rejects.toMatchObject({ code: "UPLOAD_NOT_FOUND" });
+  });
+
   it("rejects a mismatched declared size and removes the object", async () => {
     const bytes = new Uint8Array(Buffer.from(PNG_1X1, "base64"));
     const storagePath = await putDemoObject(bytes, "image/png");
@@ -123,5 +139,7 @@ describe("upload finalization", () => {
       mimeType: "image/png",
       sizeBytes: bytes.byteLength,
     })).rejects.toMatchObject({ code: "INVALID_UPLOAD_PATH" });
+
+    await expect(readStoredUpload(storagePath)).resolves.toMatchObject({ mimeType: "image/png" });
   });
 });
