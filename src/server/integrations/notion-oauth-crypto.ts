@@ -186,10 +186,10 @@ interface OAuthStatePayload {
 function signStatePayload(payload: string, secret: string): Buffer {
   // AUTH_SECRET is a server-held HMAC signing key for OAuth state integrity,
   // not a user password or stored password verifier.
-  return createHmac("sha256", secret).update(payload).digest(); // lgtm[js/insufficient-password-hash]
+  return createHmac("sha256", secret).update(payload).digest();
 }
 
-export function createNotionOAuthState(
+export function createNotionStateToken(
   memberId: string,
   secret: string,
   now = Date.now(),
@@ -205,7 +205,7 @@ export function createNotionOAuthState(
   return `${payload}.${signature}`;
 }
 
-export function verifyNotionOAuthState(
+export function verifyNotionStateToken(
   state: string,
   memberId: string,
   secret: string,
