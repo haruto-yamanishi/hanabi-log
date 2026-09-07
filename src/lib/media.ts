@@ -7,7 +7,11 @@ export type VideoMimeType = (typeof VIDEO_MIME_TYPES)[number];
 export type MediaMimeType = (typeof MEDIA_MIME_TYPES)[number];
 
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-export const VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+// Supabase Free projects have a 50 MB global object limit. Keep a small
+// binary/decimal headroom so the same build works on both Free and paid plans.
+export const VIDEO_MAX_MIB = 47;
+export const VIDEO_MAX_BYTES = VIDEO_MAX_MIB * 1024 * 1024;
+export const STORAGE_BUCKET_MAX_BYTES = 50_000_000;
 export const REPORT_MEDIA_MAX_BYTES = 200 * 1024 * 1024;
 
 export function isImageMimeType(value: string): value is ImageMimeType {
