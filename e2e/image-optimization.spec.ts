@@ -56,7 +56,7 @@ async function captureUploads(page: Page) {
   const metadata: UploadMetadata[] = [];
   const finalizations: FinalizeMetadata[] = [];
   const uploads: UploadedBytes[] = [];
-  await page.route("**/api/uploads*", async (route) => {
+  await page.route(/\/api\/uploads(?:\/finalize)?(?:\?.*)?$/, async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (request.method() === "POST" && pathname === "/api/uploads") {
