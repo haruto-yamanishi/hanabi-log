@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STORAGE_BUCKET_MAX_BYTES, VIDEO_MAX_BYTES, VIDEO_MAX_MIB } from "@/lib/media";
 import { reportInputSchema, uploadRequestSchema } from "@/lib/validation";
 
 const valid = {
@@ -39,7 +40,7 @@ describe("reportInputSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("keeps images at 5 MiB, allows videos up to 100 MiB, and caps a report at 200 MiB", () => {
+  it(`keeps images at 5 MiB, videos at ${VIDEO_MAX_MIB} MiB, and caps a report at 200 MiB`, () => {
     const image = {
       storagePath: "owner/photo.jpg",
       filename: "photo.jpg",
@@ -50,17 +51,18 @@ describe("reportInputSchema", () => {
       storagePath: "owner/run.mp4",
       filename: "run.mp4",
       mimeType: "video/mp4" as const,
-      sizeBytes: 100 * 1024 * 1024,
+      sizeBytes: VIDEO_MAX_BYTES,
     };
 
+    expect(VIDEO_MAX_BYTES).toBeLessThanOrEqual(STORAGE_BUCKET_MAX_BYTES);
     expect(uploadRequestSchema.safeParse(image).success).toBe(true);
     expect(uploadRequestSchema.safeParse({ ...image, sizeBytes: image.sizeBytes + 1 }).success).toBe(false);
     expect(uploadRequestSchema.safeParse(video).success).toBe(true);
     expect(uploadRequestSchema.safeParse({ ...video, sizeBytes: video.sizeBytes + 1 }).success).toBe(false);
-    expect(reportInputSchema.safeParse({ ...valid, attachments: [video, video] }).success).toBe(true);
+    expect(reportInputSchema.safeParse({ ...valid, attachments: [video, video, video, video] }).success).toBe(true);
     expect(reportInputSchema.safeParse({
       ...valid,
-      attachments: [video, video, { ...image, sizeBytes: 1 }],
+      attachments: [video, video, video, video, image, image, image],
     }).success).toBe(false);
   });
 
