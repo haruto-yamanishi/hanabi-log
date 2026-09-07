@@ -133,7 +133,7 @@ function pngPasses(width: number, height: number, interlace: number): Array<{ wi
 function validatePng(bytes: Uint8Array): VerifiedMediaShape {
   if (!bytesEqual(bytes, 0, PNG_SIGNATURE)) invalid("PNGシグネチャが不正です");
 
-  let position = PNG_SIGNATURE.length;
+  let position: number = PNG_SIGNATURE.length;
   let width = 0;
   let height = 0;
   let bitDepth = 0;
