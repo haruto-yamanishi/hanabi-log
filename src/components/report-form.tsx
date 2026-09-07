@@ -42,6 +42,13 @@ interface UploadResponse {
   token?: string;
 }
 
+interface FinalizeUploadResponse {
+  storagePath: string;
+  filename: string;
+  mimeType: Attachment["mimeType"];
+  sizeBytes: number;
+}
+
 function initialValues(report?: Report): FormValues {
   return {
     reportDate: report?.reportDate || todayInJst(),
@@ -220,11 +227,22 @@ export function ReportForm({
           headers: { "Content-Type": file.type },
         });
         if (!uploadResponse.ok) throw new Error(`${file.name}をアップロードできませんでした`);
+        controller.signal.throwIfAborted();
+        const finalized = await apiRequest<FinalizeUploadResponse>("/api/uploads/finalize", {
+          method: "POST",
+          signal: controller.signal,
+          body: JSON.stringify({
+            storagePath: signed.storagePath,
+            filename: file.name,
+            mimeType: file.type,
+            sizeBytes: file.size,
+          }),
+        });
         const attachment: Attachment = {
-          storagePath: signed.storagePath,
-          filename: file.name,
-          mimeType: file.type as Attachment["mimeType"],
-          sizeBytes: file.size,
+          storagePath: finalized.storagePath,
+          filename: finalized.filename,
+          mimeType: finalized.mimeType,
+          sizeBytes: finalized.sizeBytes,
           altText: "",
           sortOrder: values.attachments.length + uploaded.length,
         };
