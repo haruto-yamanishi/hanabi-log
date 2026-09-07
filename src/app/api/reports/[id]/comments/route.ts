@@ -7,6 +7,7 @@ import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { toIntegrationFailure } from "@/server/integrations/errors";
 import { createSlackCommentService } from "@/server/integrations/slack-comments";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 
 const commentSchema = z.object({
@@ -58,9 +59,10 @@ function recordCommentContributions(
   });
 }
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireCurrentUser();
+    await enforceRateLimit(request, actor.id, "read");
     const id = reportId((await context.params).id);
     const repository = getReportRepository();
     const report = await repository.getReadableReport(id, actor);
@@ -92,6 +94,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireCurrentUser();
+    await enforceRateLimit(request, actor.id, "write");
     const id = reportId((await context.params).id);
     const repository = getReportRepository();
     const report = await repository.getReadableReport(id, actor);

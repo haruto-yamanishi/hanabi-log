@@ -4,6 +4,7 @@ import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import { toPublicMember } from "@/server/members";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 
 const memberIdSchema = z.uuid();
@@ -22,6 +23,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
     if (actor.role !== "admin") {
       throw new AppError("FORBIDDEN", "メンバーの権限を変更できるのはAdminだけです", 403);
     }
+    await enforceRateLimit(request, actor.id, "admin");
 
     const memberId = memberIdSchema.parse((await context.params).id);
     const update = memberUpdateSchema.parse(await requestJson(request));
@@ -64,9 +66,10 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   });
 }
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
-    await requireCurrentUser();
+    const actor = await requireCurrentUser();
+    await enforceRateLimit(request, actor.id, "read");
     const memberId = memberIdSchema.parse((await context.params).id);
     const member = await getReportRepository().getMember(memberId);
     if (!member) throw new AppError("NOT_FOUND", "メンバーが見つかりません", 404);
@@ -76,12 +79,13 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
   });
 }
 
-export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
+export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireCurrentUser();
     if (actor.role !== "admin") {
       throw new AppError("FORBIDDEN", "メンバーを削除できるのはAdminだけです", 403);
     }
+    await enforceRateLimit(request, actor.id, "admin");
 
     const memberId = memberIdSchema.parse((await context.params).id);
     if (memberId === actor.id) {

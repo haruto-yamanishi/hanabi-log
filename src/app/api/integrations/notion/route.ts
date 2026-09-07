@@ -5,6 +5,7 @@ import { isDemoMode } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { revokeNotionOAuthConnection } from "@/server/integrations/notion-oauth";
 import { getNotionOAuthConnectionSummary } from "@/server/integrations/notion-oauth-store";
+import { enforceRateLimit } from "@/server/rate-limit";
 
 async function requireAdmin() {
   const user = await requireCurrentUser();
@@ -18,9 +19,10 @@ async function requireAdmin() {
   return user;
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   return apiResponse(async () => {
-    await requireAdmin();
+    const actor = await requireAdmin();
+    await enforceRateLimit(request, actor.id, "read");
     if (isDemoMode) {
       return Response.json(
         { connected: false, available: false },
@@ -33,9 +35,10 @@ export async function GET(): Promise<Response> {
   });
 }
 
-export async function DELETE(): Promise<Response> {
+export async function DELETE(request: Request): Promise<Response> {
   return apiResponse(async () => {
     const actor = await requireAdmin();
+    await enforceRateLimit(request, actor.id, "admin");
     const before = isDemoMode ? null : await getNotionOAuthConnectionSummary();
     await revokeNotionOAuthConnection();
     await recordAuditEvent({

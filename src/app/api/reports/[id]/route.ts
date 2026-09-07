@@ -12,6 +12,7 @@ import {
 import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { scheduleReportJobs } from "@/server/integrations/schedule";
+import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
 import { resolveReportTitle } from "@/lib/report-title";
 import { AppError } from "@/server/errors";
@@ -24,6 +25,7 @@ interface RouteContext {
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "read");
     const id = reportId((await context.params).id);
     const report = await getReportRepository().getReadableReport(id, user);
     if (!report) notFound();
@@ -34,6 +36,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 export async function PATCH(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "write");
     const id = reportId((await context.params).id);
     const parsedInput = reportPatchSchema.parse(await requestJson(request));
     const existing = await getReportRepository().getReadableReport(id, user);
@@ -65,9 +68,10 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   });
 }
 
-export async function DELETE(_request: Request, context: RouteContext): Promise<Response> {
+export async function DELETE(request: Request, context: RouteContext): Promise<Response> {
   return apiResponse(async () => {
     const user = await requireCurrentUser();
+    await enforceRateLimit(request, user.id, "write");
     const id = reportId((await context.params).id);
     const repository = getReportRepository();
     const report = await repository.getReadableReport(id, user);
