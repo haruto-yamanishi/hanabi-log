@@ -8,6 +8,11 @@ permissions:
 
 jobs:
   dependency-review:
+    # Dependency Review requires GitHub's Dependency graph. Running the action
+    # before that repository setting is enabled makes every PR fail for a
+    # configuration reason, so enforcement is opt-in until Admin completes the
+    # repository-side setup.
+    if: ${{ vars.DEPENDENCY_REVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
