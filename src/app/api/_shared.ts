@@ -7,7 +7,8 @@ import type {
   ReportInput,
 } from "@/lib/types";
 import { errorResponse, AppError } from "@/server/errors";
-import { requireUploadVerification, signReportAttachments } from "@/server/db/storage";
+import { signReportAttachments } from "@/server/db/storage";
+import { finalizeStoredUpload } from "@/server/uploads/finalize";
 
 const reportIdSchema = z.uuid();
 
@@ -66,7 +67,12 @@ export async function assertFinalizedAttachments(
   const existing = new Set(existingStoragePaths);
   for (const attachment of input.attachments ?? []) {
     if (existing.has(attachment.storagePath)) continue;
-    await requireUploadVerification(user, attachment);
+    await finalizeStoredUpload(user, {
+      storagePath: attachment.storagePath,
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+    });
   }
 }
 
