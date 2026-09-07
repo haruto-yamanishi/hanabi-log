@@ -9,7 +9,7 @@ values (
   'hanabi-log-private',
   'hanabi-log-private',
   false,
-  104857600,
+  50000000,
   array['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm']
 )
 on conflict (id) do update set
