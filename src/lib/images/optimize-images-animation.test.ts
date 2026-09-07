@@ -15,6 +15,12 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return result;
 }
 
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer as ArrayBuffer;
+}
+
 function pngChunk(type: string, data: Uint8Array): Uint8Array {
   const header = new Uint8Array(8);
   new DataView(header.buffer).setUint32(0, data.length, false);
@@ -29,9 +35,8 @@ function animatedPng(): File {
   const actl = new Uint8Array(8);
   new DataView(actl.buffer).setUint32(0, 2, false);
   new DataView(actl.buffer).setUint32(4, 0, false);
-  return new File([concat(signature, pngChunk("acTL", actl), pngChunk("IDAT", new Uint8Array()))], "animated.png", {
-    type: "image/png",
-  });
+  const bytes = concat(signature, pngChunk("acTL", actl), pngChunk("IDAT", new Uint8Array()));
+  return new File([asArrayBuffer(bytes)], "animated.png", { type: "image/png" });
 }
 
 function animatedWebp(): File {
@@ -44,7 +49,8 @@ function animatedWebp(): File {
   const riff = new Uint8Array(8);
   riff.set(ascii("RIFF"), 0);
   new DataView(riff.buffer).setUint32(4, payload.length, true);
-  return new File([concat(riff, payload)], "animated.webp", { type: "image/webp" });
+  const bytes = concat(riff, payload);
+  return new File([asArrayBuffer(bytes)], "animated.webp", { type: "image/webp" });
 }
 
 afterEach(() => {
