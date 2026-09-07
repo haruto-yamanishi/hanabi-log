@@ -6,6 +6,7 @@ import type {
   ReportStatus,
   ThemeTag,
 } from "@/lib/constants";
+import type { MediaMimeType } from "@/lib/media";
 
 export type MemberRole = "member" | "admin";
 
@@ -59,7 +60,7 @@ export interface Attachment {
   id?: string;
   storagePath: string;
   filename: string;
-  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  mimeType: MediaMimeType;
   sizeBytes: number;
   altText?: string | null;
   sortOrder: number;

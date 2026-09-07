@@ -23,8 +23,8 @@ import {
   validateNotionDataSourceSchema,
 } from "@/server/integrations/notion-schema";
 import {
-  createNotionOAuthState,
-  verifyNotionOAuthState,
+  createNotionStateToken,
+  verifyNotionStateToken,
 } from "@/server/integrations/notion-oauth-crypto";
 import {
   deleteNotionOAuthConnection,
@@ -86,7 +86,7 @@ export function createNotionOAuthAuthorizationUrl(memberId: string): string {
   url.searchParams.set("response_type", "code");
   url.searchParams.set(
     "state",
-    createNotionOAuthState(memberId, config.authSecret),
+    createNotionStateToken(memberId, config.authSecret),
   );
   return url.toString();
 }
@@ -96,7 +96,7 @@ export function isValidNotionOAuthState(
   memberId: string,
 ): boolean {
   const config = oauthConfig();
-  return verifyNotionOAuthState(state, memberId, config.authSecret);
+  return verifyNotionStateToken(state, memberId, config.authSecret);
 }
 
 function normalizedId(value: string): string {
