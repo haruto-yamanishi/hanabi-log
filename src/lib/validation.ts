@@ -117,4 +117,21 @@ export const uploadRequestSchema = z.object({
   }
 });
 
+export const uploadFinalizeSchema = z.object({
+  storagePath: z.string().min(1).max(1024),
+  filename: z.string().min(1).max(255),
+  mimeType: z.enum(MEDIA_MIME_TYPES),
+  sizeBytes: z.number().int().positive(),
+}).superRefine((file, context) => {
+  if (file.sizeBytes > maxBytesForMimeType(file.mimeType)) {
+    context.addIssue({
+      code: "custom",
+      path: ["sizeBytes"],
+      message: file.mimeType.startsWith("video/")
+        ? `動画は1件${VIDEO_MAX_MIB}MiB以内にしてください`
+        : "画像は1件5MiB以内にしてください",
+    });
+  }
+});
+
 export type ValidatedReportInput = z.output<typeof reportInputSchema>;

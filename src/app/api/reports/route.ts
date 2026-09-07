@@ -1,6 +1,7 @@
 import { reportFiltersSchema, reportInputSchema } from "@/lib/validation";
 import {
   apiResponse,
+  assertFinalizedAttachments,
   assertOwnedAttachments,
   idempotencyKey,
   publicReportListItem,
@@ -42,6 +43,7 @@ export async function POST(request: Request): Promise<Response> {
       title: resolveReportTitle(parsedInput.title, user.displayName),
     };
     assertOwnedAttachments(user, input);
+    await assertFinalizedAttachments(user, input);
     const report = await getReportRepository().createDraft(
       user,
       input,

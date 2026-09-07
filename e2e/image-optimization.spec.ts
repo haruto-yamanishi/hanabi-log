@@ -5,6 +5,7 @@ import { openPage } from "./navigation";
 const MiB = 1024 * 1024;
 type ImageFile = { name: string; mimeType: string; buffer: Buffer };
 type UploadMetadata = { filename: string; mimeType: string; sizeBytes: number };
+type FinalizeMetadata = UploadMetadata & { storagePath: string };
 type UploadedBytes = { mimeType: string; bytes: Buffer };
 
 test.setTimeout(150_000);
@@ -53,16 +54,23 @@ async function canvasFile(page: Page, kind: "photo" | "alpha" | "quadrants" | "n
 
 async function captureUploads(page: Page) {
   const metadata: UploadMetadata[] = [];
+  const finalizations: FinalizeMetadata[] = [];
   const uploads: UploadedBytes[] = [];
-  await page.route("**/api/uploads*", async (route) => {
+  await page.route(/\/api\/uploads(?:\/finalize)?(?:\?.*)?$/, async (route) => {
     const request = route.request();
-    if (request.method() === "POST") metadata.push(request.postDataJSON() as UploadMetadata);
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "POST" && pathname === "/api/uploads") {
+      metadata.push(request.postDataJSON() as UploadMetadata);
+    }
+    if (request.method() === "POST" && pathname === "/api/uploads/finalize") {
+      finalizations.push(request.postDataJSON() as FinalizeMetadata);
+    }
     if (request.method() === "PUT") {
       uploads.push({ mimeType: request.headers()["content-type"], bytes: request.postDataBuffer()! });
     }
     await route.continue();
   });
-  return { metadata, uploads };
+  return { metadata, finalizations, uploads };
 }
 
 async function inspectImage(page: Page, upload: UploadedBytes) {
@@ -148,12 +156,14 @@ test("大きいJPEGと透過PNGを最適化し、実データを保存して日�
   const heartbeat = await page.evaluate(() => (window as typeof window & { stopImageHeartbeat: () => { maxDelayMs: number; samples: number } }).stopImageHeartbeat());
   expect(captured.metadata).toHaveLength(2);
   expect(captured.uploads).toHaveLength(2);
+  expect(captured.finalizations).toHaveLength(2);
   const optimizedTotal = captured.metadata.reduce((sum, file) => sum + file.sizeBytes, 0);
   expect(optimizedTotal).toBeLessThanOrEqual(10 * MiB);
   expect(optimizedTotal).toBeLessThan(originalTotal);
   await expect(page.locator("#image-optimization-status")).toContainText(`${(originalTotal / MiB).toFixed(2)} MiB → ${(optimizedTotal / MiB).toFixed(2)} MiB`);
   for (const [index, upload] of captured.uploads.entries()) {
     assertUploadMatches(captured.metadata[index], upload);
+    expect(captured.finalizations[index]).toMatchObject(captured.metadata[index]);
     const decoded = await inspectImage(page, upload);
     expect(Math.max(decoded.width, decoded.height)).toBeLessThanOrEqual(2560);
     expect(decoded.width / decoded.height).toBeCloseTo(index === 0 ? 2600 / 1900 : 4 / 3, 2);
@@ -222,7 +232,9 @@ test("EXIFの向きを画素に反映し、メタデータを除去して小画�
   await page.locator('input[type="file"]').setInputFiles(file);
   await expect(page.locator(".attachment-item")).toHaveCount(1, { timeout: 30_000 });
   expect(captured.uploads).toHaveLength(1);
+  expect(captured.finalizations).toHaveLength(1);
   assertUploadMatches(captured.metadata[0], captured.uploads[0]);
+  expect(captured.finalizations[0]).toMatchObject(captured.metadata[0]);
   expect(captured.metadata[0].filename).toBe("camera-orientation.jpg");
   expect(captured.uploads[0].bytes.includes(Buffer.from("Exif\0\0"))).toBe(false);
   expect(captured.uploads[0].bytes.includes(Buffer.from("HANABI-E2E-CAMERA-METADATA"))).toBe(false);
@@ -243,6 +255,7 @@ test("画像の読み込み・再エンコードに失敗しても原本を送�
   await expect(page.locator("#attachments-error")).toBeVisible();
   expect(captured.metadata).toHaveLength(0);
   expect(captured.uploads).toHaveLength(0);
+  expect(captured.finalizations).toHaveLength(0);
 
   const valid = await canvasFile(page, "quadrants");
   await page.evaluate(() => {
@@ -255,11 +268,13 @@ test("画像の読み込み・再エンコードに失敗しても原本を送�
   await expect(input).toBeEnabled();
   expect(captured.metadata).toHaveLength(0);
   expect(captured.uploads).toHaveLength(0);
+  expect(captured.finalizations).toHaveLength(0);
   await page.evaluate(() => (window as typeof window & { restoreEncoder: () => void }).restoreEncoder());
   await input.setInputFiles(valid);
   await expect(page.locator(".attachment-item")).toHaveCount(1, { timeout: 30_000 });
   await expect(page.locator("#attachments-error")).toHaveCount(0);
   expect(captured.uploads).toHaveLength(1);
+  expect(captured.finalizations).toHaveLength(1);
 });
 
 test("既存画像を保持し、処理中の保存・二重選択を防いで入力を維持する", async ({ page }, testInfo) => {
@@ -318,13 +333,16 @@ test("既存画像を保持し、処理中の保存・二重選択を防いで�
   expect(saveRequests).toBe(0);
   expect(captured.metadata).toHaveLength(0);
   expect(captured.uploads).toHaveLength(0);
+  expect(captured.finalizations).toHaveLength(0);
 
   await page.evaluate(() => (window as typeof window & { releaseEncoding: () => void }).releaseEncoding());
   await expect(page.locator(".attachment-item")).toHaveCount(2, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "quadrants.jpgを削除", exact: true })).toBeVisible();
   expect(captured.metadata).toHaveLength(1);
   expect(captured.uploads).toHaveLength(1);
+  expect(captured.finalizations).toHaveLength(1);
   assertUploadMatches(captured.metadata[0], captured.uploads[0]);
+  expect(captured.finalizations[0]).toMatchObject(captured.metadata[0]);
   expect(captured.metadata[0].sizeBytes).toBeLessThanOrEqual(5 * MiB);
   await expect(page.getByLabel("タイトル任意")).toHaveValue("最適化中に編集したタイトル");
   await expect(page.getByLabel("画像の説明").first()).toHaveValue("最適化中に編集した既存画像の説明");
