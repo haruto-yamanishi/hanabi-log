@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  Attachment,
   CurrentUser,
   IntegrationBinding,
   Report,
@@ -62,11 +63,21 @@ export function assertOwnedAttachments(
 export async function assertFinalizedAttachments(
   user: CurrentUser,
   input: ReportInput,
-  existingStoragePaths: readonly string[] = [],
+  existingAttachments: readonly Attachment[] = [],
 ): Promise<void> {
-  const existing = new Set(existingStoragePaths);
+  const existing = new Map(existingAttachments.map((attachment) => [attachment.storagePath, attachment]));
   for (const attachment of input.attachments ?? []) {
-    if (existing.has(attachment.storagePath)) continue;
+    const previous = existing.get(attachment.storagePath);
+    if (previous) {
+      if (
+        previous.filename !== attachment.filename
+        || previous.mimeType !== attachment.mimeType
+        || previous.sizeBytes !== attachment.sizeBytes
+      ) {
+        throw new AppError("INVALID_ATTACHMENT", "既存の添付ファイル情報を変更できません", 422);
+      }
+      continue;
+    }
     await finalizeStoredUpload(user, {
       storagePath: attachment.storagePath,
       filename: attachment.filename,
