@@ -1,0 +1,111 @@
+name: Backup
+
+on:
+  schedule:
+    # 03:20 JST every day.
+    - cron: "20 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      PRODUCTION_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+      PRODUCTION_SUPABASE_SECRET_KEY: ${{ secrets.PRODUCTION_SUPABASE_SECRET_KEY }}
+      PRODUCTION_SUPABASE_STORAGE_BUCKET: ${{ vars.PRODUCTION_SUPABASE_STORAGE_BUCKET || 'hanabi-log-private' }}
+      BACKUP_SUPABASE_URL: ${{ secrets.BACKUP_SUPABASE_URL }}
+      BACKUP_SUPABASE_SECRET_KEY: ${{ secrets.BACKUP_SUPABASE_SECRET_KEY }}
+      BACKUP_SUPABASE_STORAGE_BUCKET: ${{ vars.BACKUP_SUPABASE_STORAGE_BUCKET || 'hanabi-log-backups' }}
+      RESTORE_DRILL_SLACK_WEBHOOK_URL: ${{ secrets.RESTORE_DRILL_SLACK_WEBHOOK_URL }}
+
+    steps:
+      - name: Check backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            PRODUCTION_DATABASE_URL \
+            PRODUCTION_SUPABASE_URL \
+            PRODUCTION_SUPABASE_SECRET_KEY \
+            BACKUP_SUPABASE_URL \
+            BACKUP_SUPABASE_SECRET_KEY
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "Required backup configuration is missing: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dump application database schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hanabi-backup"
+          docker run --rm \
+            -v "$RUNNER_TEMP/hanabi-backup:/backup" \
+            postgres:17 \
+            pg_dump "$PRODUCTION_DATABASE_URL" \
+              --format=custom \
+              --compress=9 \
+              --no-owner \
+              --no-acl \
+              --schema=public \
+              --schema=supabase_migrations \
+              --file=/backup/database.dump
+
+      - name: Export private Storage
+        run: npm run backup:storage -- "$RUNNER_TEMP/hanabi-backup/storage"
+
+      - name: Package Storage backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C "$RUNNER_TEMP/hanabi-backup/storage" \
+            -czf "$RUNNER_TEMP/hanabi-backup/storage.tar.gz" objects
+
+      - name: Persist backup outside production project
+        run: >-
+          npm run backup:upload --
+          "$RUNNER_TEMP/hanabi-backup/database.dump"
+          "$RUNNER_TEMP/hanabi-backup/storage.tar.gz"
+          "$RUNNER_TEMP/hanabi-backup/storage/manifest.json"
+
+      - name: Remove temporary backup data
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/hanabi-backup"
+
+      - name: Notify backup failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RESTORE_DRILL_SLACK_WEBHOOK_URL:-}" ]; then
+            echo "Backup failed; no Slack alert webhook is configured."
+            exit 0
+          fi
+          payload="$(jq -nc --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{text:("Hanabi LOG backup failed. Actions: " + $run)}')"
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$RESTORE_DRILL_SLACK_WEBHOOK_URL" >/dev/null

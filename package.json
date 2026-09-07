@@ -17,7 +17,11 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "notion:check": "tsx scripts/notion-check.ts",
-    "notion:migrate": "tsx scripts/notion-migrate.ts"
+    "notion:migrate": "tsx scripts/notion-migrate.ts",
+    "backup:storage": "tsx scripts/backup-storage.ts",
+    "backup:upload": "tsx scripts/upload-backup.ts",
+    "backup:download": "tsx scripts/download-backup.ts",
+    "restore:verify": "tsx scripts/verify-restore.ts"
   },
   "dependencies": {
     "@notionhq/client": "5.25.2",
