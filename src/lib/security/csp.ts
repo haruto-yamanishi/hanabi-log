@@ -13,7 +13,7 @@ export function createCspHeader(nonce: string, isDevelopment: boolean): string {
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
-    "media-src 'self' blob:",
+    "media-src 'self' blob: https://*.supabase.co",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -42,7 +42,7 @@ export async function GET(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const token = url.searchParams.get("token");
     const object = token && url.searchParams.get("mode") === "read" ? readDemoObject(token) : null;
-    if (!object) throw new AppError("NOT_FOUND", "画像が見つかりません", 404);
+    if (!object) throw new AppError("NOT_FOUND", "添付ファイルが見つかりません", 404);
     const body = object.bytes.buffer.slice(
       object.bytes.byteOffset,
       object.bytes.byteOffset + object.bytes.byteLength,

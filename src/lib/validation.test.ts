@@ -39,24 +39,33 @@ describe("reportInputSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("keeps the 5 MiB per-image and 10 MiB report limits on the server", () => {
-    const attachment = {
+  it("keeps images at 5 MiB, allows videos up to 100 MiB, and caps a report at 200 MiB", () => {
+    const image = {
       storagePath: "owner/photo.jpg",
       filename: "photo.jpg",
-      mimeType: "image/jpeg",
+      mimeType: "image/jpeg" as const,
       sizeBytes: 5 * 1024 * 1024,
     };
-    expect(uploadRequestSchema.safeParse(attachment).success).toBe(true);
-    expect(uploadRequestSchema.safeParse({ ...attachment, sizeBytes: attachment.sizeBytes + 1 }).success).toBe(false);
-    expect(reportInputSchema.safeParse({ ...valid, attachments: [attachment, attachment] }).success).toBe(true);
-    expect(reportInputSchema.safeParse({ ...valid, attachments: [{ ...attachment, sizeBytes: attachment.sizeBytes + 1 }] }).success).toBe(false);
+    const video = {
+      storagePath: "owner/run.mp4",
+      filename: "run.mp4",
+      mimeType: "video/mp4" as const,
+      sizeBytes: 100 * 1024 * 1024,
+    };
+
+    expect(uploadRequestSchema.safeParse(image).success).toBe(true);
+    expect(uploadRequestSchema.safeParse({ ...image, sizeBytes: image.sizeBytes + 1 }).success).toBe(false);
+    expect(uploadRequestSchema.safeParse(video).success).toBe(true);
+    expect(uploadRequestSchema.safeParse({ ...video, sizeBytes: video.sizeBytes + 1 }).success).toBe(false);
+    expect(reportInputSchema.safeParse({ ...valid, attachments: [video, video] }).success).toBe(true);
     expect(reportInputSchema.safeParse({
       ...valid,
-      attachments: [attachment, attachment, { ...attachment, sizeBytes: 1 }],
+      attachments: [video, video, { ...image, sizeBytes: 1 }],
     }).success).toBe(false);
   });
 
-  it("continues to reject unsupported image formats on the server", () => {
+  it("rejects unsupported image and video formats on the server", () => {
     expect(uploadRequestSchema.safeParse({ filename: "photo.heic", mimeType: "image/heic", sizeBytes: 1024 }).success).toBe(false);
+    expect(uploadRequestSchema.safeParse({ filename: "clip.mov", mimeType: "video/quicktime", sizeBytes: 1024 }).success).toBe(false);
   });
 });

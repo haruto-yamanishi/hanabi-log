@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { maxBytesForMimeType } from "@/lib/media";
 import type { CurrentUser, Report } from "@/lib/types";
 import { env, isDemoMode } from "@/server/env";
 import { AppError } from "@/server/errors";
@@ -56,7 +57,11 @@ function demoObjects(): Map<string, DemoObject> {
 }
 
 function extension(mimeType: string): string {
-  return mimeType === "image/jpeg" ? "jpg" : mimeType === "image/png" ? "png" : "webp";
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "video/mp4") return "mp4";
+  return "webm";
 }
 
 function absoluteApiUrl(origin: string, parameters: URLSearchParams): string {
@@ -103,11 +108,15 @@ export async function acceptDemoUpload(token: string, request: Request): Promise
   }
   const contentType = request.headers.get("content-type")?.split(";", 1)[0];
   if (contentType !== grant.mimeType) {
-    throw new AppError("INVALID_CONTENT_TYPE", "画像形式が発行時と一致しません", 415);
+    throw new AppError("INVALID_CONTENT_TYPE", "ファイル形式が発行時と一致しません", 415);
   }
   const bytes = new Uint8Array(await request.arrayBuffer());
-  if (!bytes.length || bytes.byteLength > grant.maxSize || bytes.byteLength > 5 * 1024 * 1024) {
-    throw new AppError("INVALID_FILE_SIZE", "画像サイズが発行時と一致しません", 422);
+  if (
+    !bytes.length
+    || bytes.byteLength > grant.maxSize
+    || bytes.byteLength > maxBytesForMimeType(grant.mimeType)
+  ) {
+    throw new AppError("INVALID_FILE_SIZE", "ファイルサイズが発行時と一致しません", 422);
   }
   demoObjects().set(grant.storagePath, { bytes, mimeType: grant.mimeType });
   uploadGrants().delete(token);
@@ -123,7 +132,7 @@ async function createSignedReadUrl(storagePath: string, origin: string): Promise
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
     .createSignedUrl(storagePath, 300);
   if (error || !data) {
-    throw new AppError("STORAGE_ERROR", "画像URLを発行できませんでした", 502);
+    throw new AppError("STORAGE_ERROR", "添付ファイルURLを発行できませんでした", 502);
   }
   return data.signedUrl;
 }
@@ -171,6 +180,6 @@ export async function deleteReportAttachments(report: Report): Promise<void> {
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
     .remove(paths);
   if (error) {
-    throw new AppError("STORAGE_DELETE_ERROR", "添付画像を削除できませんでした", 502);
+    throw new AppError("STORAGE_DELETE_ERROR", "添付ファイルを削除できませんでした", 502);
   }
 }

@@ -16,6 +16,11 @@ describe("Content Security Policy", () => {
     expect(header).toContain("upgrade-insecure-requests");
   });
 
+  it("allows private Supabase videos while keeping media sources scoped", () => {
+    const header = createCspHeader("abc123", false);
+    expect(header).toContain("media-src 'self' blob: https://*.supabase.co");
+  });
+
   it("allows React development eval only in development", () => {
     const header = createCspHeader("devnonce", true);
     expect(header).toContain("'unsafe-eval'");
