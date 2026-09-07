@@ -1,0 +1,153 @@
+name: Restore Drill
+
+on:
+  schedule:
+    # First Sunday-like weekly cadence; a successful drill every month is the operational target.
+    - cron: "40 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hanabi_restore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d hanabi_restore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      BACKUP_SUPABASE_URL: ${{ secrets.BACKUP_SUPABASE_URL }}
+      BACKUP_SUPABASE_SECRET_KEY: ${{ secrets.BACKUP_SUPABASE_SECRET_KEY }}
+      BACKUP_SUPABASE_STORAGE_BUCKET: ${{ vars.BACKUP_SUPABASE_STORAGE_BUCKET || 'hanabi-log-backups' }}
+      PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      RESTORE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/hanabi_restore
+      RESTORE_DRILL_SLACK_WEBHOOK_URL: ${{ secrets.RESTORE_DRILL_SLACK_WEBHOOK_URL }}
+
+    steps:
+      - name: Check restore-drill configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BACKUP_SUPABASE_URL BACKUP_SUPABASE_SECRET_KEY PRODUCTION_DATABASE_URL
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "Required restore-drill configuration is missing: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Record restore drill start
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host postgres:17 \
+            psql "$PRODUCTION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -v run_id="$GITHUB_RUN_ID" -v source_sha="$GITHUB_SHA" \
+            -c "insert into restore_drill_runs (run_id, status, source_commit_sha, started_at, updated_at) values (:'run_id', 'running', :'source_sha', now(), now()) on conflict (run_id) do update set status='running', source_commit_sha=excluded.source_commit_sha, started_at=now(), completed_at=null, error_code=null, updated_at=now();"
+
+      - name: Download latest isolated backup
+        run: npm run backup:download -- "$RUNNER_TEMP/hanabi-restore"
+
+      - name: Associate drill with backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup_id="$(jq -r '.backupId' "$RUNNER_TEMP/hanabi-restore/backup-pointer.json")"
+          docker run --rm --network host postgres:17 \
+            psql "$PRODUCTION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -v run_id="$GITHUB_RUN_ID" -v backup_id="$backup_id" \
+            -c "update restore_drill_runs set backup_id=:'backup_id', updated_at=now() where run_id=:'run_id';"
+
+      - name: Restore database into isolated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -v "$RUNNER_TEMP/hanabi-restore:/restore:ro" \
+            postgres:17 \
+            pg_restore \
+              --exit-on-error \
+              --no-owner \
+              --no-acl \
+              --dbname "$RESTORE_DATABASE_URL" \
+              /restore/database.dump
+
+      - name: Restore Storage into isolated filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hanabi-restore/storage"
+          tar -xzf "$RUNNER_TEMP/hanabi-restore/storage.tar.gz" \
+            -C "$RUNNER_TEMP/hanabi-restore/storage"
+
+      - name: Verify schema, relations, attachments, and checksums
+        run: >-
+          npm run restore:verify --
+          "$RUNNER_TEMP/hanabi-restore/storage-manifest.json"
+          "$RUNNER_TEMP/hanabi-restore/storage/objects"
+
+      - name: Record restore drill success
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host postgres:17 \
+            psql "$PRODUCTION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -v run_id="$GITHUB_RUN_ID" \
+            -c "update restore_drill_runs set status='passed', completed_at=now(), error_code=null, updated_at=now() where run_id=:'run_id';"
+
+      - name: Record restore drill failure
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          docker run --rm --network host postgres:17 \
+            psql "$PRODUCTION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -v run_id="$GITHUB_RUN_ID" \
+            -c "update restore_drill_runs set status='failed', completed_at=now(), error_code='WORKFLOW_FAILED', updated_at=now() where run_id=:'run_id';"
+
+      - name: Remove restored production data from runner
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/hanabi-restore"
+
+      - name: Notify restore-drill failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RESTORE_DRILL_SLACK_WEBHOOK_URL:-}" ]; then
+            echo "Restore drill failed; no Slack alert webhook is configured."
+            exit 0
+          fi
+          payload="$(jq -nc --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{text:("Hanabi LOG restore drill failed. Actions: " + $run)}')"
+          curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$RESTORE_DRILL_SLACK_WEBHOOK_URL" >/dev/null
