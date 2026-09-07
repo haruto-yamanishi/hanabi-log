@@ -51,7 +51,6 @@ function assertGeneratedUploadPath(user: CurrentUser, input: FinalizeUploadInput
   ) {
     throw new AppError("INVALID_UPLOAD_PATH", "Storage pathの形式が不正です", 422);
   }
-  assertMediaNameMatchesMime(input.filename, input.storagePath, input.mimeType);
 }
 
 function verificationMatches(
@@ -100,9 +99,11 @@ export async function finalizeStoredUpload(
     };
   }
 
-  const stored = await readStoredUpload(input.storagePath);
+  let stored: Awaited<ReturnType<typeof readStoredUpload>>;
   let shape: ReturnType<typeof validateMediaBytes>;
   try {
+    assertMediaNameMatchesMime(input.filename, input.storagePath, input.mimeType);
+    stored = await readStoredUpload(input.storagePath);
     if (
       stored.bytes.byteLength !== input.sizeBytes
       || stored.bytes.byteLength > maxBytesForMimeType(input.mimeType)
