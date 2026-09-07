@@ -14,6 +14,7 @@ import { ReportLikeButton } from "@/components/report-like-button";
 import { ReportComments } from "@/components/report-comments";
 import { Avatar, ErrorState, LoadingView } from "@/components/ui";
 import { activityAreaClassName } from "@/lib/constants";
+import { isVideoMimeType } from "@/lib/media";
 
 export function ReportDetailScreen({ reportId, initialNotice }: { reportId: string; initialNotice?: string }) {
   const router = useRouter();
@@ -98,7 +99,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
   async function deleteReport() {
     if (!report || !user || !canDeleteReport(user, report)) return;
     if (!window.confirm(
-      report.status === "draft" ? `「${report.title}」の下書きを削除しますか？この操作は元に戻せません。` : `「${report.title}」を完全に削除しますか？\n\nWeb上の日報と添付画像を削除し、Slack投稿を削除、Notionページをゴミ箱へ移動します。この操作は元に戻せません。`,
+      report.status === "draft" ? `「${report.title}」の下書きを削除しますか？この操作は元に戻せません。` : `「${report.title}」を完全に削除しますか？\n\nWeb上の日報と添付ファイルを削除し、Slack投稿を削除、Notionページをゴミ箱へ移動します。この操作は元に戻せません。`,
     )) return;
     setActing(true);
     setError(null);
@@ -180,13 +181,26 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
           {report.nextActionText ? <ReportSection content={report.nextActionText} index="04" title="次のアクション" tone="action" /> : null}
 
           {report.attachments.length ? (
-            <section aria-labelledby="images-heading" className="report-section report-section--media">
-              <div className="report-section__heading"><span>PHOTO</span><h2 id="images-heading">画像</h2></div>
+            <section aria-labelledby="media-heading" className="report-section report-section--media">
+              <div className="report-section__heading"><span>MEDIA</span><h2 id="media-heading">画像・動画</h2></div>
               <div className="report-images">
                 {report.attachments.map((attachment) => attachment.signedUrl ? (
-                  <figure key={attachment.id || attachment.storagePath}><img alt={attachment.altText || "日報に添付された画像"} src={attachment.signedUrl} /><figcaption>{attachment.altText || attachment.filename}</figcaption></figure>
+                  <figure key={attachment.id || attachment.storagePath}>
+                    {isVideoMimeType(attachment.mimeType) ? (
+                      <video
+                        controls
+                        playsInline
+                        preload="metadata"
+                        src={attachment.signedUrl}
+                        style={{ aspectRatio: "16 / 9", background: "#000", borderRadius: 9, display: "block", width: "100%" }}
+                      />
+                    ) : (
+                      <img alt={attachment.altText || "日報に添付された画像"} src={attachment.signedUrl} />
+                    )}
+                    <figcaption>{attachment.altText || attachment.filename}</figcaption>
+                  </figure>
                 ) : (
-                  <div className="report-image-placeholder" key={attachment.id || attachment.storagePath}><span>画像</span><p>{attachment.filename}</p></div>
+                  <div className="report-image-placeholder" key={attachment.id || attachment.storagePath}><span>{isVideoMimeType(attachment.mimeType) ? "動画" : "画像"}</span><p>{attachment.filename}</p></div>
                 ))}
               </div>
             </section>

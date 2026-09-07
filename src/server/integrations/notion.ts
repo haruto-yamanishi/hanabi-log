@@ -1,5 +1,6 @@
 import { Client, type CreatePageParameters } from "@notionhq/client";
 
+import { isImageMimeType } from "@/lib/media";
 import type { Attachment, IntegrationBinding, Report } from "@/lib/types";
 import {
   IntegrationError,
@@ -324,7 +325,10 @@ export class NotionReportService implements NotionReportIntegration {
     report: Report,
     textResult: NotionSyncResult,
   ): Promise<NotionSyncResult> {
-    if (report.attachments.length === 0) return textResult;
+    const imageAttachments = report.attachments.filter((attachment) =>
+      isImageMimeType(attachment.mimeType),
+    );
+    if (imageAttachments.length === 0) return textResult;
     if (!this.files) {
       return {
         ...textResult,
@@ -340,7 +344,7 @@ export class NotionReportService implements NotionReportIntegration {
 
     try {
       const images: NotionImageReference[] = [];
-      for (const attachment of [...report.attachments].sort(
+      for (const attachment of [...imageAttachments].sort(
         (left, right) => left.sortOrder - right.sortOrder,
       )) {
         if (attachment.sizeBytes > 5 * 1024 * 1024) {
