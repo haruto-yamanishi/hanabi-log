@@ -9,6 +9,8 @@ export type RateLimitBucket =
   | "admin"
   | "integration";
 
+export type RateLimitMode = "off" | "enforce";
+
 const WINDOW_MS = 60_000;
 
 const DEFAULT_LIMITS: Record<RateLimitBucket, number> = {
@@ -42,6 +44,15 @@ export interface RateLimitDecision {
   retryAfterSeconds: number;
 }
 
+export function configuredRateLimitMode(
+  environment: RateLimitEnvironment = process.env,
+): RateLimitMode {
+  const raw = environment.RATE_LIMIT_MODE?.trim().toLowerCase();
+  if (!raw || raw === "off") return "off";
+  if (raw === "enforce") return "enforce";
+  throw new Error("RATE_LIMIT_MODE must be either 'off' or 'enforce'");
+}
+
 export function configuredRateLimit(
   bucket: RateLimitBucket,
   environment: RateLimitEnvironment = process.env,
@@ -55,12 +66,25 @@ export function configuredRateLimit(
   return parsed;
 }
 
-export function extractClientIp(headers: Headers): string {
-  const forwarded =
-    headers.get("x-vercel-forwarded-for") ?? headers.get("x-forwarded-for");
-  const candidate = forwarded?.split(",", 1)[0]?.trim() || headers.get("x-real-ip")?.trim();
-  if (!candidate) return "unknown";
-  return candidate.slice(0, 128);
+function boundedProxyValue(value: string | null): string | null {
+  const candidate = value?.split(",", 1)[0]?.trim();
+  return candidate ? candidate.slice(0, 128) : null;
+}
+
+export function extractClientIp(
+  headers: Headers,
+  environment: RateLimitEnvironment = process.env,
+): string {
+  // On Vercel, prefer the platform-owned header. In production we do not
+  // fall back to client-spoofable forwarded headers if that trusted signal is
+  // missing; all such requests intentionally share the "unknown" network key.
+  const vercelForwarded = boundedProxyValue(headers.get("x-vercel-forwarded-for"));
+  if (vercelForwarded) return vercelForwarded;
+  if (environment.NODE_ENV === "production") return "unknown";
+
+  const forwarded = boundedProxyValue(headers.get("x-forwarded-for"));
+  if (forwarded) return forwarded;
+  return boundedProxyValue(headers.get("x-real-ip")) ?? "unknown";
 }
 
 function localDemoMode(): boolean {
@@ -119,6 +143,10 @@ export async function enforceRateLimit(
 ): Promise<RateLimitDecision | null> {
   // Route unit tests and local demo mode use repository doubles and should not need a live DB.
   if (process.env.NODE_ENV === "test" || localDemoMode()) return null;
+
+  // Safe staged rollout: code may be deployed before the migration, but
+  // production enforcement is activated only after the table exists.
+  if (configuredRateLimitMode() === "off") return null;
 
   const limit = configuredRateLimit(bucket);
   const networkLimit = limit * 4;
