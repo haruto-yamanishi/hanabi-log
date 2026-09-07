@@ -50,11 +50,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
       },
     };
     assertOwnedAttachments(user, input.report, [existing.authorId]);
-    await assertFinalizedAttachments(
-      user,
-      input.report,
-      existing.attachments.map((attachment) => attachment.storagePath),
-    );
+    await assertFinalizedAttachments(user, input.report, existing.attachments);
     const report = await getReportRepository().patchReport(
       id,
       user,
