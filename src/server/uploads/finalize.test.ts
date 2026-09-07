@@ -44,12 +44,14 @@ async function putDemoObject(bytes: Uint8Array, mimeType: "image/png") {
     { mimeType, sizeBytes: bytes.byteLength },
     "https://hanabi.test",
   );
+  const body = new Uint8Array(bytes.byteLength);
+  body.set(bytes);
   await acceptDemoUpload(
     signed.token,
     new Request(signed.signedUrl, {
       method: "PUT",
       headers: { "Content-Type": mimeType },
-      body: bytes,
+      body: body.buffer,
     }),
   );
   return signed.storagePath;
