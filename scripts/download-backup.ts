@@ -16,17 +16,6 @@ function required(name: string): string {
   return value;
 }
 
-async function downloadObject(
-  client: ReturnType<typeof createClient>,
-  bucket: string,
-  objectPath: string,
-  destination: string,
-): Promise<void> {
-  const { data, error } = await client.storage.from(bucket).download(objectPath);
-  if (error || !data) throw new Error(`Could not download restore input: ${error?.message ?? "unknown"}`);
-  await writeFile(destination, Buffer.from(await data.arrayBuffer()), { flag: "wx" });
-}
-
 async function main(): Promise<void> {
   const outputRoot = path.resolve(process.argv[2] ?? ".restore-drill/input");
   await mkdir(outputRoot, { recursive: true });
@@ -37,15 +26,21 @@ async function main(): Promise<void> {
   );
   const bucket = process.env.BACKUP_SUPABASE_STORAGE_BUCKET?.trim() || "hanabi-log-backups";
 
+  async function downloadObject(objectPath: string, destination: string): Promise<void> {
+    const { data, error } = await client.storage.from(bucket).download(objectPath);
+    if (error || !data) throw new Error(`Could not download restore input: ${error?.message ?? "unknown"}`);
+    await writeFile(destination, Buffer.from(await data.arrayBuffer()), { flag: "wx" });
+  }
+
   const { data: pointerBlob, error: pointerError } = await client.storage.from(bucket).download("latest.json");
   if (pointerError || !pointerBlob) {
     throw new Error(`Could not read latest backup pointer: ${pointerError?.message ?? "unknown"}`);
   }
   const pointer = pointerSchema.parse(JSON.parse(await pointerBlob.text()));
 
-  await downloadObject(client, bucket, `${pointer.backupId}/database.dump`, path.join(outputRoot, "database.dump"));
-  await downloadObject(client, bucket, `${pointer.backupId}/storage.tar.gz`, path.join(outputRoot, "storage.tar.gz"));
-  await downloadObject(client, bucket, `${pointer.backupId}/storage-manifest.json`, path.join(outputRoot, "storage-manifest.json"));
+  await downloadObject(`${pointer.backupId}/database.dump`, path.join(outputRoot, "database.dump"));
+  await downloadObject(`${pointer.backupId}/storage.tar.gz`, path.join(outputRoot, "storage.tar.gz"));
+  await downloadObject(`${pointer.backupId}/storage-manifest.json`, path.join(outputRoot, "storage-manifest.json"));
   await writeFile(path.join(outputRoot, "backup-pointer.json"), JSON.stringify(pointer, null, 2), { flag: "wx" });
   console.log(`Restore input downloaded: ${pointer.backupId}`);
 }
