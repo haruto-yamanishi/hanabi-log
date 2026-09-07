@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  createNotionOAuthState,
+  createNotionStateToken,
   decryptNotionToken,
   decryptNotionTokenWithKeyring,
   encryptNotionToken,
   encryptNotionTokenWithKeyring,
   notionTokenNeedsRotation,
-  verifyNotionOAuthState,
+  verifyNotionStateToken,
 } from "@/server/integrations/notion-oauth-crypto";
 
 const key = Buffer.alloc(32, 7).toString("base64");
@@ -94,21 +94,21 @@ describe("Notion OAuth cryptography", () => {
 
   it("signs state for one member and expires it", () => {
     const now = Date.UTC(2026, 7, 20, 8);
-    const state = createNotionOAuthState("member-1", "auth-secret", now);
+    const state = createNotionStateToken("member-1", "auth-secret", now);
     expect(
-      verifyNotionOAuthState(state, "member-1", "auth-secret", now + 1_000),
+      verifyNotionStateToken(state, "member-1", "auth-secret", now + 1_000),
     ).toBe(true);
     expect(
-      verifyNotionOAuthState(state, "member-2", "auth-secret", now + 1_000),
+      verifyNotionStateToken(state, "member-2", "auth-secret", now + 1_000),
     ).toBe(false);
     expect(
-      verifyNotionOAuthState(state, "member-1", "wrong-secret", now + 1_000),
+      verifyNotionStateToken(state, "member-1", "wrong-secret", now + 1_000),
     ).toBe(false);
     expect(
-      verifyNotionOAuthState(`${state.slice(0, -1)}x`, "member-1", "auth-secret", now),
+      verifyNotionStateToken(`${state.slice(0, -1)}x`, "member-1", "auth-secret", now),
     ).toBe(false);
     expect(
-      verifyNotionOAuthState(
+      verifyNotionStateToken(
         state,
         "member-1",
         "auth-secret",

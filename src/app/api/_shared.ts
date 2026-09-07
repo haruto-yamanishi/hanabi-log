@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  Attachment,
   CurrentUser,
   IntegrationBinding,
   Report,
@@ -7,7 +8,7 @@ import type {
   ReportInput,
 } from "@/lib/types";
 import { errorResponse, AppError } from "@/server/errors";
-import { signReportAttachments } from "@/server/db/storage";
+import { requireUploadVerification, signReportAttachments } from "@/server/db/storage";
 
 const reportIdSchema = z.uuid();
 
@@ -54,7 +55,29 @@ export function assertOwnedAttachments(
         attachment.storagePath.includes("\\"),
     )
   ) {
-    throw new AppError("INVALID_ATTACHMENT", "利用できない画像が含まれています", 422);
+    throw new AppError("INVALID_ATTACHMENT", "利用できない添付ファイルが含まれています", 422);
+  }
+}
+
+export async function assertFinalizedAttachments(
+  user: CurrentUser,
+  input: ReportInput,
+  existingAttachments: readonly Attachment[] = [],
+): Promise<void> {
+  const existing = new Map(existingAttachments.map((attachment) => [attachment.storagePath, attachment]));
+  for (const attachment of input.attachments ?? []) {
+    const previous = existing.get(attachment.storagePath);
+    if (previous) {
+      if (
+        previous.filename !== attachment.filename
+        || previous.mimeType !== attachment.mimeType
+        || previous.sizeBytes !== attachment.sizeBytes
+      ) {
+        throw new AppError("INVALID_ATTACHMENT", "既存の添付ファイル情報を変更できません", 422);
+      }
+      continue;
+    }
+    await requireUploadVerification(user, attachment);
   }
 }
 
