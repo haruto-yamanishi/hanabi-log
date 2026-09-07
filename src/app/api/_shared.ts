@@ -8,8 +8,7 @@ import type {
   ReportInput,
 } from "@/lib/types";
 import { errorResponse, AppError } from "@/server/errors";
-import { signReportAttachments } from "@/server/db/storage";
-import { finalizeStoredUpload } from "@/server/uploads/finalize";
+import { requireUploadVerification, signReportAttachments } from "@/server/db/storage";
 
 const reportIdSchema = z.uuid();
 
@@ -78,12 +77,7 @@ export async function assertFinalizedAttachments(
       }
       continue;
     }
-    await finalizeStoredUpload(user, {
-      storagePath: attachment.storagePath,
-      filename: attachment.filename,
-      mimeType: attachment.mimeType,
-      sizeBytes: attachment.sizeBytes,
-    });
+    await requireUploadVerification(user, attachment);
   }
 }
 
