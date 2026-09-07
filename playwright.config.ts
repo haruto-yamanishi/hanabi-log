@@ -12,6 +12,9 @@ export default defineConfig({
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     env: {
+      // Demo signed-upload URLs must use the same origin as Playwright. CI sets
+      // APP_BASE_URL to localhost, which is a different CSP origin from 127.0.0.1.
+      APP_BASE_URL: "http://127.0.0.1:3000",
       DEMO_MODE: "true",
       SLACK_BOT_TOKEN: "",
       SLACK_CHANNEL_ID: "",
