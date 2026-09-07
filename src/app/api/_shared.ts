@@ -7,7 +7,7 @@ import type {
   ReportInput,
 } from "@/lib/types";
 import { errorResponse, AppError } from "@/server/errors";
-import { signReportAttachments } from "@/server/db/storage";
+import { requireUploadVerification, signReportAttachments } from "@/server/db/storage";
 
 const reportIdSchema = z.uuid();
 
@@ -54,7 +54,19 @@ export function assertOwnedAttachments(
         attachment.storagePath.includes("\\"),
     )
   ) {
-    throw new AppError("INVALID_ATTACHMENT", "利用できない画像が含まれています", 422);
+    throw new AppError("INVALID_ATTACHMENT", "利用できない添付ファイルが含まれています", 422);
+  }
+}
+
+export async function assertFinalizedAttachments(
+  user: CurrentUser,
+  input: ReportInput,
+  existingStoragePaths: readonly string[] = [],
+): Promise<void> {
+  const existing = new Set(existingStoragePaths);
+  for (const attachment of input.attachments ?? []) {
+    if (existing.has(attachment.storagePath)) continue;
+    await requireUploadVerification(user, attachment);
   }
 }
 
