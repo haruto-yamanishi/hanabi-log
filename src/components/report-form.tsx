@@ -10,6 +10,7 @@ import {
   MEDIA_MIME_TYPES,
   REPORT_MEDIA_MAX_BYTES,
   VIDEO_MAX_BYTES,
+  VIDEO_MAX_MIB,
   isImageMimeType,
   isMediaMimeType,
   isVideoMimeType,
@@ -186,7 +187,7 @@ export function ReportForm({
       const imageFiles = files.filter((file) => isImageMimeType(file.type));
       const videoFiles = files.filter((file) => isVideoMimeType(file.type));
       const oversizedVideo = videoFiles.find((file) => file.size > VIDEO_MAX_BYTES);
-      if (oversizedVideo) throw new Error(`${oversizedVideo.name}は100MiB以内にしてください`);
+      if (oversizedVideo) throw new Error(`${oversizedVideo.name}は${VIDEO_MAX_MIB}MiB以内にしてください`);
 
       const remainingBytes = REPORT_MEDIA_MAX_BYTES - totalMediaSize;
       const videoBytes = videoFiles.reduce((sum, file) => sum + file.size, 0);
@@ -226,7 +227,16 @@ export function ReportForm({
           body: file,
           headers: { "Content-Type": file.type },
         });
-        if (!uploadResponse.ok) throw new Error(`${file.name}をアップロードできませんでした`);
+        if (!uploadResponse.ok) {
+          let detail = `HTTP ${uploadResponse.status}`;
+          try {
+            const errorBody = await uploadResponse.clone().json() as { message?: string; error?: string };
+            detail = errorBody.message || errorBody.error || detail;
+          } catch {
+            // Supabase may return an empty or non-JSON error body.
+          }
+          throw new Error(`${file.name}をアップロードできませんでした（${detail}）`);
+        }
         controller.signal.throwIfAborted();
         const finalized = await apiRequest<FinalizeUploadResponse>("/api/uploads/finalize", {
           method: "POST",
@@ -444,7 +454,7 @@ export function ReportForm({
               <label className={`upload-zone${uploading ? " upload-zone--busy" : ""}`}>
                 <input accept={MEDIA_MIME_TYPES.join(",")} aria-describedby={errors.attachments ? "attachments-error image-optimization-status" : "image-optimization-status"} aria-invalid={Boolean(errors.attachments)} disabled={uploading || Boolean(busy) || isArchived || totalMediaSize >= REPORT_MEDIA_MAX_BYTES} multiple onChange={(event) => void uploadMedia(event)} type="file" />
                 <span className="upload-zone__icon"><ImageIcon /></span>
-                <span><strong>{imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "アップロードしています…" : "画像・動画を選ぶ"}</strong><small>JPEG・PNG・WebP / MP4・WebM。画像1件5MiB、動画1件100MiB、合計200MiBまで</small></span>
+                <span><strong>{imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "アップロードしています…" : "画像・動画を選ぶ"}</strong><small>JPEG・PNG・WebP / MP4・WebM。画像1件5MiB、動画1件{VIDEO_MAX_MIB}MiB、合計200MiBまで</small></span>
               </label>
               <p aria-live="polite" aria-atomic="true" className="field-help" id="image-optimization-status">
                 {imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "画像・動画をアップロードしています…" : optimizationSummary ? `画像を最適化しました（今回選択した画像）：${(optimizationSummary.originalSize / 1024 / 1024).toFixed(2)} MiB → ${(optimizationSummary.optimizedSize / 1024 / 1024).toFixed(2)} MiB。動画は元ファイルのままアップロードします。` : "画像は自動でサイズを調整し、動画は元ファイルのままアップロードします。端末の元ファイルは変更されません。"}
