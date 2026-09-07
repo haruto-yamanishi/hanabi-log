@@ -17,6 +17,19 @@ Hanabi LOGのCI/CDでは、依存先の変更がそのまま実行コードに�
 - `Dependency Review`: PRで新しく導入されるHigh以上の既知脆弱性をblockする。
 - `Dependabot`: npmとGitHub Actionsを週次で更新候補として提出する。
 
+## Dependency Review activation
+
+Dependency ReviewはGitHubのDependency graphが有効であることを前提とします。Dependency graphが無効な状態でActionを実行すると、脆弱性の有無ではなくrepository設定不足でPRが失敗します。
+
+そのため、workflowはrepository variable `DEPENDENCY_REVIEW_ENABLED=true` のときだけ実行します。Repository Adminは次の順序で有効化します。
+
+1. GitHub repository settingsでDependency graphを有効化する。
+2. Repository variable `DEPENDENCY_REVIEW_ENABLED=true`を設定する。
+3. テストPRを作り、`Dependency Review` jobがskipではなく実行されて成功することを確認する。
+4. main ruleset / branch protectionのrequired checkへDependency Reviewを追加する。
+
+有効化前はCodeQL・CI・Dependabot・SHA pinは有効ですが、Dependency Reviewは強制されていないため、Issue #37を完了扱いにしません。
+
 ## Dependency updates
 
 自動更新PRであっても、CIが成功する前にmergeしない。Major updateはrelease notes、breaking changes、migration要否を確認する。認証、DB、Slack/Notion、Storage、Next.js関連依存は特に手動レビューする。
