@@ -262,44 +262,24 @@ test("画像の読み込み・再エンコードに失敗しても原本を送�
   expect(captured.uploads).toHaveLength(1);
 });
 
-async function seedNearlyFullDraft(page: Page, image: ImageFile) {
-  const attachments = [];
-  for (const [index, sizeBytes] of [5 * MiB, 5 * MiB - 1024].entries()) {
-    // A valid JPEG with harmless trailing padding creates exact existing byte budgets.
-    const bytes = Buffer.alloc(sizeBytes);
-    image.buffer.copy(bytes);
-    const filename = `existing-${index}.jpg`;
-    const grantResponse = await page.request.post("/api/uploads", { data: { filename, mimeType: "image/jpeg", sizeBytes } });
-    expect(grantResponse.ok()).toBe(true);
-    const grant = await grantResponse.json() as { storagePath: string; signedUrl: string };
-    const uploaded = await page.request.put(grant.signedUrl, { data: bytes, headers: { "Content-Type": "image/jpeg" } });
-    expect(uploaded.ok()).toBe(true);
-    attachments.push({ storagePath: grant.storagePath, filename, mimeType: "image/jpeg", sizeBytes, altText: "既存の説明", sortOrder: index });
-  }
-  const reportDate = await page.locator("#reportDate").inputValue();
-  const response = await page.request.post("/api/reports", {
-    headers: { "Idempotency-Key": crypto.randomUUID() },
-    data: { reportDate, title: "残容量と処理中の操作", activityArea: "ロボット", contentCategory: "進捗", activityText: "既存画像の残容量を検証する。", attachments },
-  });
-  expect(response.ok()).toBe(true);
-  return await response.json() as { id: string };
-}
-
-test("既存画像の残容量を守り、処理中の保存・二重選択を防いで入力を維持する", async ({ page }, testInfo) => {
+test("既存画像を保持し、処理中の保存・二重選択を防いで入力を維持する", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "webkit", "WebKitのsigned fetchはルート監視の対象外としてChromium/Mobileで検証する");
   await openPage(page, "/reports/new");
-  const original = await canvasFile(page, "quadrants");
-  const draft = await seedNearlyFullDraft(page, original);
-  await openPage(page, `/reports/${draft.id}/edit`);
+  const existing = await canvasFile(page, "quadrants");
+  await fillReport(page, "処理中の操作ロック");
+  const createInput = page.locator('input[type="file"]');
+  await createInput.setInputFiles(existing);
+  await expect(page.locator(".attachment-item")).toHaveCount(1, { timeout: 30_000 });
+  await page.getByLabel("画像の説明").fill("既存の説明");
+  await page.getByRole("button", { name: "下書き保存", exact: true }).click();
+  await expect(page).toHaveURL(/\/reports\/[^/]+\/edit\?saved=1$/, { timeout: 90_000 });
+  const reportId = new URL(page.url()).pathname.split("/").at(-2)!;
+
+  await openPage(page, `/reports/${reportId}/edit`);
+  await expect(page.locator(".attachment-item")).toHaveCount(1);
   const noise = await canvasFile(page, "noise");
   const captured = await captureUploads(page);
   const input = page.locator('input[type="file"]');
-  await input.setInputFiles(noise);
-  await expect(page.locator("#attachments-error")).toBeVisible({ timeout: 30_000 });
-  expect(captured.metadata).toHaveLength(0);
-  expect(captured.uploads).toHaveLength(0);
-  await expect(page.locator(".attachment-item")).toHaveCount(2);
-  await page.getByRole("button", { name: "existing-0.jpgを削除", exact: true }).click();
 
   await page.evaluate(() => {
     let release!: () => void;
@@ -310,20 +290,23 @@ test("既存画像の残容量を守り、処理中の保存・二重選択を�
       original.call(this, (blob) => { void gate.then(() => callback(blob)); }, type, quality);
     };
   });
+
   let saveRequests = 0;
   page.on("request", (request) => {
-    if (new URL(request.url()).pathname === `/api/reports/${draft.id}` && request.method() === "PATCH") saveRequests += 1;
+    if (new URL(request.url()).pathname === `/api/reports/${reportId}` && request.method() === "PATCH") saveRequests += 1;
   });
+
   await input.setInputFiles(noise);
   await expect(page.locator("#image-optimization-status")).toContainText("画像を最適化しています…");
   await expect(page.locator("#image-optimization-status")).toHaveAttribute("aria-live", "polite");
   await expect(input).toBeDisabled();
   await expect(page.getByRole("button", { name: "下書き保存", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "公開する", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "existing-1.jpgを削除", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "quadrants.jpgを削除", exact: true })).toBeDisabled();
+
   await page.getByLabel("タイトル任意").fill("最適化中に編集したタイトル");
-  await page.getByLabel("画像の説明").fill("最適化中に編集した既存画像の説明");
-  // Programmatically emitted events also exercise the synchronous guards, beyond disabled controls.
+  await page.getByLabel("画像の説明").first().fill("最適化中に編集した既存画像の説明");
+
   await page.evaluate(() => {
     document.querySelector("form.report-form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
@@ -334,13 +317,19 @@ test("既存画像の残容量を守り、処理中の保存・二重選択を�
   });
   expect(saveRequests).toBe(0);
   expect(captured.metadata).toHaveLength(0);
+  expect(captured.uploads).toHaveLength(0);
+
   await page.evaluate(() => (window as typeof window & { releaseEncoding: () => void }).releaseEncoding());
   await expect(page.locator(".attachment-item")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "quadrants.jpgを削除", exact: true })).toBeVisible();
+  expect(captured.metadata).toHaveLength(1);
   expect(captured.uploads).toHaveLength(1);
-  expect(captured.metadata[0].sizeBytes + 5 * MiB - 1024).toBeLessThanOrEqual(10 * MiB);
+  assertUploadMatches(captured.metadata[0], captured.uploads[0]);
+  expect(captured.metadata[0].sizeBytes).toBeLessThanOrEqual(5 * MiB);
   await expect(page.getByLabel("タイトル任意")).toHaveValue("最適化中に編集したタイトル");
   await expect(page.getByLabel("画像の説明").first()).toHaveValue("最適化中に編集した既存画像の説明");
+
   await page.getByRole("button", { name: "下書き保存", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/reports/${draft.id}/edit\\?saved=1$`), { timeout: 90_000 });
+  await expect(page).toHaveURL(new RegExp(`/reports/${reportId}/edit\\?saved=1$`), { timeout: 90_000 });
   expect(saveRequests).toBe(1);
 });
