@@ -21,7 +21,7 @@ Hanabi LOGはVercelの複数instance間でも共有できるよう、PostgreSQL�
 
 DBにはmember IDやIP addressそのものをrate-limit keyとして保存しません。`AUTH_SECRET`をkeyにしたHMAC-SHA-256だけを`api_rate_limit_windows.key_hash`へ保存します。
 
-IPはVercel/reverse proxyが設定するforwarded headerをtrust boundaryとします。自己hostする場合は、公開Internetからアプリへ直接到達できないようtrusted proxyを前段に置き、forwarded headersをproxy側で上書きしてください。
+ProductionではVercelが付与する`x-vercel-forwarded-for`だけをnetwork identityのtrusted signalとして使います。このheaderが無いproduction requestは`unknown` networkとしてまとめ、clientが任意に送れる`x-forwarded-for`や`x-real-ip`へ自動fallbackしません。Local developmentではforwarded headerを使えます。
 
 ## Response
 
@@ -30,6 +30,12 @@ IPはVercel/reverse proxyが設定するforwarded headerをtrust boundaryとし�
 Clientは429を即時連打せず、最低でも`Retry-After`だけ待ってから再試行してください。
 
 ## Configuration
+
+`RATE_LIMIT_MODE`で強制状態を切り替えます。
+
+- `off`: counter tableへアクセスせず、rate limitを適用しない。安全なmigration rollout用。
+- `enforce`: PostgreSQL counterを必須化し、table障害時もfail-openしない。
+- 未設定は`off`。それ以外の値はconfiguration errorとして拒否する。
 
 以下のenvironment variableでmember limitを変更できます。
 
@@ -46,6 +52,14 @@ Clientは429を即時連打せず、最低でも`Retry-After`だけ待ってか�
 
 counterは1分window単位で作成され、1日を超えた行は既存のoperational retention jobからbounded batchで削除します。
 
-## Deployment order
+## Safe deployment order
 
-rate-limitを有効にしたapplicationをdeployする前に、`202609070006_api_rate_limits.sql` migrationを適用してください。テーブルが存在しない状態では保護対象APIをfail-openにしません。
+Migrationと強制コードを同じdeployで一斉に有効化しません。Vercelがapplicationを先にdeployした場合、table未作成で全保護APIが500になるためです。
+
+1. `RATE_LIMIT_MODE=off`のままapplication codeをdeployする。
+2. `202609070006_api_rate_limits.sql` migrationを本番DBへ適用する。
+3. `api_rate_limit_windows` tableが存在することを確認する。
+4. `RATE_LIMIT_MODE=enforce`へ変更してredeployする。
+5. 正常requestが通ることと、テスト用の低いlimit環境でHTTP 429 + `Retry-After`が返ることを確認する。
+
+`enforce`へ切り替えた後にcounter tableへ接続できない場合は保護対象APIをfail-openにしません。障害として扱い、DB側を復旧させます。
