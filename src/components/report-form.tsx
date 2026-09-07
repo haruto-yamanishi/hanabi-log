@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type ThemeTag } from "@/lib/constants";
 import { todayInJst } from "@/lib/text";
+import { optimizeImages } from "@/lib/images/optimize-images";
 import type { Attachment, CurrentUser, RelatedLink, Report, ReportInput } from "@/lib/types";
 import { apiRequest, ClientApiError, makeIdempotencyKey } from "@/components/api-client";
 import { AlertIcon, ArrowLeftIcon, CheckIcon, ImageIcon, LinkIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
@@ -84,12 +85,16 @@ export function ReportForm({
   const [values, setValues] = useState<FormValues>(() => initialValues(initialReport));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<"draft" | "publish" | "delete" | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [imagePhase, setImagePhase] = useState<"optimizing" | "uploading" | null>(null);
+  const [optimizationSummary, setOptimizationSummary] = useState<{ originalSize: number; optimizedSize: number } | null>(null);
+  const [originalImageSizes, setOriginalImageSizes] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const createKey = useRef(makeIdempotencyKey("create-report"));
   const publishKey = useRef(makeIdempotencyKey("publish-report"));
+  const imageController = useRef<AbortController | null>(null);
+  const uploading = imagePhase !== null;
 
   const isPublished = report?.status === "published";
   const isPendingApproval = report?.status === "pending_approval";
@@ -105,8 +110,10 @@ export function ReportForm({
     return () => controller.abort();
   }, []);
 
+  useEffect(() => () => imageController.current?.abort(), []);
+
   async function deleteDraft() {
-    if (!report || !currentUser || !canDeleteReport(currentUser, report) || busy || uploading) return;
+    if (!report || !currentUser || !canDeleteReport(currentUser, report) || busy || imageController.current) return;
     if (!window.confirm(`「${report.title}」の下書きを削除しますか？この操作は元に戻せません。`)) return;
     setBusy("delete");
     setGlobalError(null);
@@ -149,33 +156,33 @@ export function ReportForm({
   async function uploadImages(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
-    if (!files.length) return;
+    if (!files.length || imageController.current || busy || isArchived) return;
     setGlobalError(null);
-
-    const invalid = files.find((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type));
-    if (invalid) {
-      setErrors((current) => ({ ...current, attachments: "JPEG、PNG、WebP形式の画像を選んでください" }));
-      return;
-    }
-    if (files.some((file) => file.size > 5 * 1024 * 1024)) {
-      setErrors((current) => ({ ...current, attachments: "画像は1件5MiB以内にしてください" }));
-      return;
-    }
-    if (totalImageSize + files.reduce((sum, file) => sum + file.size, 0) > 10 * 1024 * 1024) {
-      setErrors((current) => ({ ...current, attachments: "画像は合計10MiB以内にしてください" }));
-      return;
-    }
-
-    setUploading(true);
+    setErrors((current) => ({ ...current, attachments: "" }));
+    setOptimizationSummary(null);
+    const controller = new AbortController();
+    imageController.current = controller;
+    setImagePhase("optimizing");
     try {
+      // Existing attachments consume part of the report's budget, including when editing.
+      const optimized = await optimizeImages(files, {
+        maxFileBytes: 5 * 1024 * 1024,
+        maxTotalBytes: 10 * 1024 * 1024 - totalImageSize,
+        signal: controller.signal,
+      });
+      controller.signal.throwIfAborted();
+      setImagePhase("uploading");
       const uploaded: Attachment[] = [];
-      for (const file of files) {
+      for (const { file } of optimized) {
+        controller.signal.throwIfAborted();
         const signed = await apiRequest<UploadResponse>("/api/uploads", {
           method: "POST",
+          signal: controller.signal,
           body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size }),
         });
         const uploadResponse = await fetch(signed.signedUrl, {
           method: "PUT",
+          signal: controller.signal,
           body: file,
           headers: { "Content-Type": file.type },
         });
@@ -189,12 +196,23 @@ export function ReportForm({
           sortOrder: values.attachments.length + uploaded.length,
         });
       }
-      update("attachments", [...values.attachments, ...uploaded]);
+      controller.signal.throwIfAborted();
+      setValues((current) => ({ ...current, attachments: [...current.attachments, ...uploaded] }));
+      setOriginalImageSizes((current) => ({
+        ...current,
+        ...Object.fromEntries(uploaded.map((attachment, index) => [attachment.storagePath, optimized[index].originalSize])),
+      }));
+      setOptimizationSummary({
+        originalSize: optimized.reduce((sum, result) => sum + result.originalSize, 0),
+        optimizedSize: optimized.reduce((sum, result) => sum + result.optimizedSize, 0),
+      });
       setErrors((current) => ({ ...current, attachments: "" }));
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setErrors((current) => ({ ...current, attachments: cause instanceof Error ? cause.message : "画像をアップロードできませんでした" }));
     } finally {
-      setUploading(false);
+      if (imageController.current === controller) imageController.current = null;
+      if (!controller.signal.aborted) setImagePhase(null);
     }
   }
 
@@ -203,7 +221,9 @@ export function ReportForm({
   }
 
   function removeAttachment(index: number) {
+    if (imageController.current || busy || isArchived) return;
     update("attachments", values.attachments.filter((_, attachmentIndex) => attachmentIndex !== index));
+    setOptimizationSummary(null);
   }
 
   function basicClientValidation(): Record<string, string> {
@@ -218,6 +238,7 @@ export function ReportForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (imageController.current || busy || isArchived) return;
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const intent = submitter?.value === "publish" ? "publish" : "draft";
     const validationErrors = basicClientValidation();
@@ -366,16 +387,19 @@ export function ReportForm({
             <div className="field">
               <div className="field__label"><span className="label-like">画像<span className="optional-mark">任意</span></span><span className="counter">{(totalImageSize / 1024 / 1024).toFixed(1)} / 10 MiB</span></div>
               <label className={`upload-zone${uploading ? " upload-zone--busy" : ""}`}>
-                <input accept="image/jpeg,image/png,image/webp" disabled={uploading || totalImageSize >= 10 * 1024 * 1024} multiple onChange={(event) => void uploadImages(event)} type="file" />
+                <input accept="image/jpeg,image/png,image/webp" aria-describedby={errors.attachments ? "attachments-error image-optimization-status" : "image-optimization-status"} aria-invalid={Boolean(errors.attachments)} disabled={uploading || Boolean(busy) || isArchived || totalImageSize >= 10 * 1024 * 1024} multiple onChange={(event) => void uploadImages(event)} type="file" />
                 <span className="upload-zone__icon"><ImageIcon /></span>
-                <span><strong>{uploading ? "アップロードしています…" : "画像を選ぶ"}</strong><small>JPEG・PNG・WebP / 1件5MiB、合計10MiBまで</small></span>
+                <span><strong>{imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "アップロードしています…" : "画像を選ぶ"}</strong><small>JPEG・PNG・WebP / 自動最適化後に1件5MiB、合計10MiBまで</small></span>
               </label>
-              {errors.attachments ? <p className="field-error">{errors.attachments}</p> : null}
+              <p aria-live="polite" aria-atomic="true" className="field-help" id="image-optimization-status">
+                {imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "最適化した画像をアップロードしています…" : optimizationSummary ? `画像を最適化しました（今回選択した画像）：${(optimizationSummary.originalSize / 1024 / 1024).toFixed(2)} MiB → ${(optimizationSummary.optimizedSize / 1024 / 1024).toFixed(2)} MiB` : "画像を選ぶと自動でサイズを調整します。端末の元画像は変更されません。"}
+              </p>
+              {errors.attachments ? <p className="field-error" id="attachments-error" role="alert">{errors.attachments}</p> : null}
               {values.attachments.length ? <div className="attachment-list">{values.attachments.map((attachment, index) => (
                 <div className="attachment-item" key={`${attachment.storagePath}-${index}`}>
                   <span className="attachment-item__thumb"><ImageIcon /></span>
-                  <div className="attachment-item__body"><div><strong>{attachment.filename}</strong><small>{(attachment.sizeBytes / 1024 / 1024).toFixed(1)} MiB</small></div><label><span>画像の説明</span><input maxLength={300} onChange={(event) => updateAttachmentAlt(index, event.target.value)} placeholder="例：組み立て後の駆動系" value={attachment.altText || ""} /></label></div>
-                  <button aria-label={`${attachment.filename}を削除`} className="icon-button" onClick={() => removeAttachment(index)} type="button"><XIcon /></button>
+                  <div className="attachment-item__body"><div><strong>{attachment.filename}</strong><small>{originalImageSizes[attachment.storagePath] !== undefined ? `${(originalImageSizes[attachment.storagePath] / 1024 / 1024).toFixed(2)} MiB → ` : ""}{(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MiB</small></div><label><span>画像の説明</span><input maxLength={300} onChange={(event) => updateAttachmentAlt(index, event.target.value)} placeholder="例：組み立て後の駆動系" value={attachment.altText || ""} /></label></div>
+                  <button aria-label={`${attachment.filename}を削除`} className="icon-button" disabled={uploading || Boolean(busy) || isArchived} onClick={() => removeAttachment(index)} type="button"><XIcon /></button>
                 </div>
               ))}</div> : null}
             </div>

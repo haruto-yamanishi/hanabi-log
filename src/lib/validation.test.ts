@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportInputSchema } from "@/lib/validation";
+import { reportInputSchema, uploadRequestSchema } from "@/lib/validation";
 
 const valid = {
   reportDate: "2026-08-19",
@@ -37,5 +37,26 @@ describe("reportInputSchema", () => {
   it("rejects a future JST date", () => {
     const result = reportInputSchema.safeParse({ ...valid, reportDate: "2999-01-01" });
     expect(result.success).toBe(false);
+  });
+
+  it("keeps the 5 MiB per-image and 10 MiB report limits on the server", () => {
+    const attachment = {
+      storagePath: "owner/photo.jpg",
+      filename: "photo.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 5 * 1024 * 1024,
+    };
+    expect(uploadRequestSchema.safeParse(attachment).success).toBe(true);
+    expect(uploadRequestSchema.safeParse({ ...attachment, sizeBytes: attachment.sizeBytes + 1 }).success).toBe(false);
+    expect(reportInputSchema.safeParse({ ...valid, attachments: [attachment, attachment] }).success).toBe(true);
+    expect(reportInputSchema.safeParse({ ...valid, attachments: [{ ...attachment, sizeBytes: attachment.sizeBytes + 1 }] }).success).toBe(false);
+    expect(reportInputSchema.safeParse({
+      ...valid,
+      attachments: [attachment, attachment, { ...attachment, sizeBytes: 1 }],
+    }).success).toBe(false);
+  });
+
+  it("continues to reject unsupported image formats on the server", () => {
+    expect(uploadRequestSchema.safeParse({ filename: "photo.heic", mimeType: "image/heic", sizeBytes: 1024 }).success).toBe(false);
   });
 });
