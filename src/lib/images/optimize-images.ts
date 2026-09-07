@@ -2,6 +2,9 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const CAPACITY_ERROR = "画像を容量上限（1枚5MiB・添付済み画像を含め合計10MiB）以内に最適化できませんでした。画像の枚数を減らすか、別の画像を選択してください。";
+const ANIMATED_IMAGE_ERROR = "アニメーション画像（APNG・Animated WebP）は現在最適化できません。静止画に変換してから選択してください。";
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+const MAX_CONTAINER_CHUNKS = 256;
 
 // Each pass applies the same settings to the whole selection. Always redraw
 // from the originals to avoid accumulating JPEG/WebP compression artifacts.
@@ -41,6 +44,75 @@ function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
     throw new DOMException("画像の最適化を中止しました", "AbortError");
   }
+}
+
+async function readBytes(file: File, start: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
+  throwIfAborted(signal);
+  const bytes = new Uint8Array(await file.slice(start, start + length).arrayBuffer());
+  throwIfAborted(signal);
+  return bytes;
+}
+
+function ascii(bytes: Uint8Array, start: number, length: number): string {
+  return String.fromCharCode(...bytes.subarray(start, start + length));
+}
+
+async function isAnimatedPng(file: File, signal?: AbortSignal): Promise<boolean> {
+  const signature = await readBytes(file, 0, 8, signal);
+  if (signature.length !== PNG_SIGNATURE.length || PNG_SIGNATURE.some((value, index) => signature[index] !== value)) {
+    return false;
+  }
+
+  let offset = 8;
+  for (let chunk = 0; chunk < MAX_CONTAINER_CHUNKS && offset + 8 <= file.size; chunk += 1) {
+    const header = await readBytes(file, offset, 8, signal);
+    if (header.length < 8) return false;
+    const length = new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(0, false);
+    const type = ascii(header, 4, 4);
+    if (type === "acTL") return true;
+    // APNG requires acTL before the first IDAT chunk.
+    if (type === "IDAT" || type === "IEND") return false;
+    const nextOffset = offset + 12 + length;
+    if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > file.size) return false;
+    offset = nextOffset;
+  }
+  return false;
+}
+
+async function isAnimatedWebp(file: File, signal?: AbortSignal): Promise<boolean> {
+  const riff = await readBytes(file, 0, 12, signal);
+  if (riff.length < 12 || ascii(riff, 0, 4) !== "RIFF" || ascii(riff, 8, 4) !== "WEBP") {
+    return false;
+  }
+
+  let offset = 12;
+  for (let chunk = 0; chunk < MAX_CONTAINER_CHUNKS && offset + 8 <= file.size; chunk += 1) {
+    const header = await readBytes(file, offset, 8, signal);
+    if (header.length < 8) return false;
+    const type = ascii(header, 0, 4);
+    const length = new DataView(header.buffer, header.byteOffset, header.byteLength).getUint32(4, true);
+    if (type === "ANIM" || type === "ANMF") return true;
+    if (type === "VP8X") {
+      if (length < 1) return false;
+      const flags = await readBytes(file, offset + 8, 1, signal);
+      if (flags.length === 1 && (flags[0] & 0x02) !== 0) return true;
+    }
+    if (type === "VP8 " || type === "VP8L") return false;
+    const paddedLength = length + (length % 2);
+    const nextOffset = offset + 8 + paddedLength;
+    if (!Number.isSafeInteger(nextOffset) || nextOffset <= offset || nextOffset > file.size) return false;
+    offset = nextOffset;
+  }
+  return false;
+}
+
+async function assertStillImage(file: File, signal?: AbortSignal): Promise<void> {
+  const animated = file.type === "image/png"
+    ? await isAnimatedPng(file, signal)
+    : file.type === "image/webp"
+      ? await isAnimatedWebp(file, signal)
+      : false;
+  if (animated) throw new Error(ANIMATED_IMAGE_ERROR);
 }
 
 async function decodeImage(file: File, signal?: AbortSignal): Promise<DecodedImage> {
@@ -191,6 +263,9 @@ export async function optimizeImages(
     if (!IMAGE_TYPES.has(file.type)) {
       throw new Error("画像はJPEG・PNG・WebP形式を選択してください。");
     }
+  }
+  for (const file of files) {
+    await assertStillImage(file, options.signal);
   }
   // Callers may reserve capacity for attachments already stored in the report.
   // Options can tighten the limits, but cannot relax the server's limits.
