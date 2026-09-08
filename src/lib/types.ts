@@ -1,3 +1,4 @@
+import type { MediaMimeType } from "@/lib/media";
 import type {
   ActivityArea,
   ContentCategory,

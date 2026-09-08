@@ -44,8 +44,8 @@ export function LikeNotificationHistoryPanel() {
             <div className="sync-issue__body">
               <div className="sync-issue__title"><strong>{item.recipientName} 宛て</strong><span>{labels[item.status]}</span></div>
               <small>Slack ID: {item.recipientSlackUserId}{!item.recipientRecorded ? "（現在の日報投稿者・送信時の宛先記録なし）" : ""}</small>
-              <Link href={`/reports/${item.reportId}`} prefetch={false}>{item.reportTitle}</Link>
-              <p>通知対象：{item.thresholds.join("・")}人超え</p>
+              {item.kind === "report" ? <Link href={`/reports/${item.reportId}`} prefetch={false}>{item.reportTitle}</Link> : <strong>個人の累計いいね</strong>}
+              <p>通知対象：{item.thresholds.map(value => value.toLocaleString("ja-JP")).join("・")}{item.kind === "member" ? "件到達" : "人超え"}</p>
               {item.messageText ? <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", font: "inherit" }}>{item.messageText}</pre>
                 : <p>{item.status === "sent" ? "この通知は本文の記録開始前に送信されたため、送信内容は保存されていません。" : "送信内容は送信処理の開始時に記録されます。"}</p>}
               {item.sentAt ? <small>送信日時：{formatDateTime(item.sentAt)}</small> : item.attemptedAt ? <small>最終試行：{formatDateTime(item.attemptedAt)}</small> : null}

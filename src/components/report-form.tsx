@@ -1,22 +1,12 @@
 "use client";
 
+import { fileMimeType, MEDIA_MIME_TYPES, MAX_ATTACHMENT_BYTES, mediaSizeLimit } from "@/lib/media";
 import { canDeleteReport } from "@/lib/authorization";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS, type ThemeTag } from "@/lib/constants";
-import {
-  IMAGE_MAX_BYTES,
-  MEDIA_MIME_TYPES,
-  REPORT_MEDIA_MAX_BYTES,
-  VIDEO_MAX_BYTES,
-  VIDEO_MAX_MIB,
-  isImageMimeType,
-  isMediaMimeType,
-  isVideoMimeType,
-} from "@/lib/media";
 import { todayInJst } from "@/lib/text";
-import { optimizeImages } from "@/lib/images/optimize-images";
 import type { Attachment, CurrentUser, RelatedLink, Report, ReportInput } from "@/lib/types";
 import { apiRequest, ClientApiError, makeIdempotencyKey } from "@/components/api-client";
 import { AlertIcon, ArrowLeftIcon, CheckIcon, ImageIcon, LinkIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
@@ -41,13 +31,6 @@ interface UploadResponse {
   storagePath: string;
   signedUrl: string;
   token?: string;
-}
-
-interface FinalizeUploadResponse {
-  storagePath: string;
-  filename: string;
-  mimeType: Attachment["mimeType"];
-  sizeBytes: number;
 }
 
 function initialValues(report?: Report): FormValues {
@@ -102,22 +85,18 @@ export function ReportForm({
   const [values, setValues] = useState<FormValues>(() => initialValues(initialReport));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<"draft" | "publish" | "delete" | null>(null);
-  const [imagePhase, setImagePhase] = useState<"optimizing" | "uploading" | null>(null);
-  const [optimizationSummary, setOptimizationSummary] = useState<{ originalSize: number; optimizedSize: number } | null>(null);
-  const [originalImageSizes, setOriginalImageSizes] = useState<Record<string, number>>({});
+  const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
   const createKey = useRef(makeIdempotencyKey("create-report"));
   const publishKey = useRef(makeIdempotencyKey("publish-report"));
-  const imageController = useRef<AbortController | null>(null);
-  const uploading = imagePhase !== null;
 
   const isPublished = report?.status === "published";
   const isPendingApproval = report?.status === "pending_approval";
   const isArchived = report?.status === "archived";
   const requiresApproval = currentUser?.role !== "admin" && currentUser?.isActive === false;
-  const totalMediaSize = useMemo(() => values.attachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0), [values.attachments]);
+  const totalAttachmentSize = useMemo(() => values.attachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0), [values.attachments]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -127,10 +106,8 @@ export function ReportForm({
     return () => controller.abort();
   }, []);
 
-  useEffect(() => () => imageController.current?.abort(), []);
-
   async function deleteDraft() {
-    if (!report || !currentUser || !canDeleteReport(currentUser, report) || busy || imageController.current) return;
+    if (!report || !currentUser || !canDeleteReport(currentUser, report) || busy || uploading) return;
     if (!window.confirm(`「${report.title}」の下書きを削除しますか？この操作は元に戻せません。`)) return;
     setBusy("delete");
     setGlobalError(null);
@@ -173,110 +150,54 @@ export function ReportForm({
   async function uploadMedia(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
-    if (!files.length || imageController.current || busy || isArchived) return;
+    if (!files.length) return;
     setGlobalError(null);
-    setErrors((current) => ({ ...current, attachments: "" }));
-    setOptimizationSummary(null);
-    const controller = new AbortController();
-    imageController.current = controller;
 
+    const invalid = files.find((file) => !MEDIA_MIME_TYPES.includes(fileMimeType(file) as Attachment["mimeType"]));
+    if (invalid) {
+      setErrors((current) => ({ ...current, attachments: "JPEG・PNG・WebPの画像、MP4・MOV・WebMの動画を選んでください" }));
+      return;
+    }
+    if (files.some((file) => file.size === 0 || file.size > mediaSizeLimit(fileMimeType(file)))) {
+      setErrors((current) => ({ ...current, attachments: "空のファイルは添付できません。画像は1件5MiB、動画は1件50MiB以内にしてください" }));
+      return;
+    }
+    if (totalAttachmentSize + files.reduce((sum, file) => sum + file.size, 0) > MAX_ATTACHMENT_BYTES) {
+      setErrors((current) => ({ ...current, attachments: "添付ファイルは合計100MiB以内にしてください" }));
+      return;
+    }
+
+    setUploading(true);
+    const uploaded: Attachment[] = [];
     try {
-      const unsupported = files.find((file) => !isMediaMimeType(file.type));
-      if (unsupported) throw new Error(`${unsupported.name}は対応していないファイル形式です`);
-
-      const imageFiles = files.filter((file) => isImageMimeType(file.type));
-      const videoFiles = files.filter((file) => isVideoMimeType(file.type));
-      const oversizedVideo = videoFiles.find((file) => file.size > VIDEO_MAX_BYTES);
-      if (oversizedVideo) throw new Error(`${oversizedVideo.name}は${VIDEO_MAX_MIB}MiB以内にしてください`);
-
-      const remainingBytes = REPORT_MEDIA_MAX_BYTES - totalMediaSize;
-      const videoBytes = videoFiles.reduce((sum, file) => sum + file.size, 0);
-      if (videoBytes > remainingBytes) throw new Error("画像・動画は合計200MiB以内にしてください");
-
-      setImagePhase(imageFiles.length ? "optimizing" : "uploading");
-      const optimized = imageFiles.length
-        ? await optimizeImages(imageFiles, {
-            maxFileBytes: IMAGE_MAX_BYTES,
-            maxTotalBytes: remainingBytes - videoBytes,
-            signal: controller.signal,
-          })
-        : [];
-      controller.signal.throwIfAborted();
-      setImagePhase("uploading");
-
-      const filesToUpload = [
-        ...optimized.map((result) => ({ file: result.file, originalSize: result.originalSize })),
-        ...videoFiles.map((file) => ({ file, originalSize: null })),
-      ];
-      const selectedBytes = filesToUpload.reduce((sum, item) => sum + item.file.size, 0);
-      if (selectedBytes > remainingBytes) throw new Error("画像・動画は合計200MiB以内にしてください");
-
-      const uploaded: Attachment[] = [];
-      const originalSizes: Record<string, number> = {};
-      for (const item of filesToUpload) {
-        controller.signal.throwIfAborted();
-        const { file } = item;
+      for (const file of files) {
         const signed = await apiRequest<UploadResponse>("/api/uploads", {
           method: "POST",
-          signal: controller.signal,
-          body: JSON.stringify({ filename: file.name, mimeType: file.type, sizeBytes: file.size }),
+          body: JSON.stringify({ filename: file.name, mimeType: fileMimeType(file), sizeBytes: file.size }),
         });
         const uploadResponse = await fetch(signed.signedUrl, {
           method: "PUT",
-          signal: controller.signal,
           body: file,
-          headers: { "Content-Type": file.type },
+          headers: { "Content-Type": fileMimeType(file) },
         });
-        if (!uploadResponse.ok) {
-          let detail = `HTTP ${uploadResponse.status}`;
-          try {
-            const errorBody = await uploadResponse.clone().json() as { message?: string; error?: string };
-            detail = errorBody.message || errorBody.error || detail;
-          } catch {
-            // Supabase may return an empty or non-JSON error body.
-          }
-          throw new Error(`${file.name}をアップロードできませんでした（${detail}）`);
-        }
-        controller.signal.throwIfAborted();
-        const finalized = await apiRequest<FinalizeUploadResponse>("/api/uploads/finalize", {
-          method: "POST",
-          signal: controller.signal,
-          body: JSON.stringify({
-            storagePath: signed.storagePath,
-            filename: file.name,
-            mimeType: file.type,
-            sizeBytes: file.size,
-          }),
-        });
-        const attachment: Attachment = {
-          storagePath: finalized.storagePath,
-          filename: finalized.filename,
-          mimeType: finalized.mimeType,
-          sizeBytes: finalized.sizeBytes,
+        if (!uploadResponse.ok) throw new Error(`${file.name}をアップロードできませんでした`);
+        uploaded.push({
+          storagePath: signed.storagePath,
+          filename: file.name,
+          mimeType: fileMimeType(file) as Attachment["mimeType"],
+          sizeBytes: file.size,
           altText: "",
           sortOrder: values.attachments.length + uploaded.length,
-        };
-        uploaded.push(attachment);
-        if (item.originalSize !== null) originalSizes[attachment.storagePath] = item.originalSize;
-      }
-      controller.signal.throwIfAborted();
-      setValues((current) => ({ ...current, attachments: [...current.attachments, ...uploaded] }));
-      if (Object.keys(originalSizes).length) {
-        setOriginalImageSizes((current) => ({ ...current, ...originalSizes }));
-      }
-      if (optimized.length) {
-        setOptimizationSummary({
-          originalSize: optimized.reduce((sum, result) => sum + result.originalSize, 0),
-          optimizedSize: optimized.reduce((sum, result) => sum + result.optimizedSize, 0),
         });
       }
       setErrors((current) => ({ ...current, attachments: "" }));
     } catch (cause) {
-      if (controller.signal.aborted) return;
-      setErrors((current) => ({ ...current, attachments: cause instanceof Error ? cause.message : "画像・動画をアップロードできませんでした" }));
+      setErrors((current) => ({ ...current, attachments: cause instanceof Error ? cause.message : "ファイルをアップロードできませんでした" }));
     } finally {
-      if (imageController.current === controller) imageController.current = null;
-      if (!controller.signal.aborted) setImagePhase(null);
+      if (uploaded.length) {
+        setValues((current) => ({ ...current, attachments: [...current.attachments, ...uploaded] }));
+      }
+      setUploading(false);
     }
   }
 
@@ -285,9 +206,7 @@ export function ReportForm({
   }
 
   function removeAttachment(index: number) {
-    if (imageController.current || busy || isArchived) return;
     update("attachments", values.attachments.filter((_, attachmentIndex) => attachmentIndex !== index));
-    setOptimizationSummary(null);
   }
 
   function basicClientValidation(): Record<string, string> {
@@ -297,13 +216,11 @@ export function ReportForm({
     if (!values.contentCategory) next.contentCategory = "内容カテゴリを選択してください";
     if (!values.activityText.trim()) next.activityText = "今日やったことを入力してください";
     if (values.reportDate > todayInJst()) next.reportDate = "未来の日付は選べません";
-    if (totalMediaSize > REPORT_MEDIA_MAX_BYTES) next.attachments = "画像・動画は合計200MiB以内にしてください";
     return next;
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (imageController.current || busy || isArchived) return;
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const intent = submitter?.value === "publish" ? "publish" : "draft";
     const validationErrors = basicClientValidation();
@@ -450,24 +367,18 @@ export function ReportForm({
           <section aria-labelledby="media-heading" className="form-card">
             <div className="form-section-heading"><span>03</span><div><h2 id="media-heading">画像・動画と関連リンク</h2></div></div>
             <div className="field">
-              <div className="field__label"><span className="label-like">画像・動画<span className="optional-mark">任意</span></span><span className="counter">{(totalMediaSize / 1024 / 1024).toFixed(1)} / 200 MiB</span></div>
+              <div className="field__label"><span className="label-like">画像・動画<span className="optional-mark">任意</span></span><span className="counter">{(totalAttachmentSize / 1024 / 1024).toFixed(1)} / 100 MiB</span></div>
               <label className={`upload-zone${uploading ? " upload-zone--busy" : ""}`}>
-                <input accept={MEDIA_MIME_TYPES.join(",")} aria-describedby={errors.attachments ? "attachments-error image-optimization-status" : "image-optimization-status"} aria-invalid={Boolean(errors.attachments)} disabled={uploading || Boolean(busy) || isArchived || totalMediaSize >= REPORT_MEDIA_MAX_BYTES} multiple onChange={(event) => void uploadMedia(event)} type="file" />
+                <input accept={MEDIA_MIME_TYPES.join(",")} disabled={uploading || totalAttachmentSize >= MAX_ATTACHMENT_BYTES} multiple onChange={(event) => void uploadMedia(event)} type="file" />
                 <span className="upload-zone__icon"><ImageIcon /></span>
-                <span><strong>{imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "アップロードしています…" : "画像・動画を選ぶ"}</strong><small>JPEG・PNG・WebP / MP4・WebM。画像1件5MiB、動画1件{VIDEO_MAX_MIB}MiB、合計200MiBまで</small></span>
+                <span><strong>{uploading ? "アップロードしています…" : "画像・動画を選ぶ"}</strong><small>画像 JPEG・PNG・WebP：5MiB / 動画 MP4・MOV・WebM：50MiB / 合計100MiBまで</small></span>
               </label>
-              <p aria-live="polite" aria-atomic="true" className="field-help" id="image-optimization-status">
-                {imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "画像・動画をアップロードしています…" : optimizationSummary ? `画像を最適化しました（今回選択した画像）：${(optimizationSummary.originalSize / 1024 / 1024).toFixed(2)} MiB → ${(optimizationSummary.optimizedSize / 1024 / 1024).toFixed(2)} MiB。動画は元ファイルのままアップロードします。` : "画像は自動でサイズを調整し、動画は元ファイルのままアップロードします。端末の元ファイルは変更されません。"}
-              </p>
-              {errors.attachments ? <p className="field-error" id="attachments-error" role="alert">{errors.attachments}</p> : null}
+              {errors.attachments ? <p className="field-error">{errors.attachments}</p> : null}
               {values.attachments.length ? <div className="attachment-list">{values.attachments.map((attachment, index) => (
                 <div className="attachment-item" key={`${attachment.storagePath}-${index}`}>
                   <span className="attachment-item__thumb"><ImageIcon /></span>
-                  <div className="attachment-item__body">
-                    <div><strong>{attachment.filename}</strong><small>{originalImageSizes[attachment.storagePath] !== undefined ? `${(originalImageSizes[attachment.storagePath] / 1024 / 1024).toFixed(2)} MiB → ` : ""}{(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MiB</small></div>
-                    {isImageMimeType(attachment.mimeType) ? <label><span>画像の説明</span><input maxLength={300} onChange={(event) => updateAttachmentAlt(index, event.target.value)} placeholder="例：組み立て後の駆動系" value={attachment.altText || ""} /></label> : <small>動画は日報の詳細画面で再生できます</small>}
-                  </div>
-                  <button aria-label={`${attachment.filename}を削除`} className="icon-button" disabled={uploading || Boolean(busy) || isArchived} onClick={() => removeAttachment(index)} type="button"><XIcon /></button>
+                  <div className="attachment-item__body"><div><strong>{attachment.filename}</strong><small>{(attachment.sizeBytes / 1024 / 1024).toFixed(1)} MiB</small></div><label><span>添付ファイルの説明</span><input maxLength={300} onChange={(event) => updateAttachmentAlt(index, event.target.value)} placeholder="例：組み立て後の駆動系" value={attachment.altText || ""} /></label></div>
+                  <button aria-label={`${attachment.filename}を削除`} className="icon-button" onClick={() => removeAttachment(index)} type="button"><XIcon /></button>
                 </div>
               ))}</div> : null}
             </div>

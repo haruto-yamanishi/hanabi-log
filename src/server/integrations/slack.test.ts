@@ -357,3 +357,11 @@ it("keeps a member's original Slack post intact during Web edits and deletion", 
   expect(api.updateMessage).not.toHaveBeenCalled();
   expect(api.deleteMessage).not.toHaveBeenCalled();
 });
+
+
+it("does not send a video URL as a Slack image block", () => {
+  const payload = renderSlackReport(report({ attachments: [{ storagePath: "member/video.mp4", filename: "movie.mp4", mimeType: "video/mp4", sizeBytes: 10_000_000, sortOrder: 0, signedUrl: "https://storage.example.test/movie.mp4" }] }), "https://log.example.test");
+  expect(payload.blocks.some((block) => block.type === "image")).toBe(false);
+  expect(JSON.stringify(payload.blocks)).toContain("1 件の添付ファイル（画像・動画）");
+  expect(JSON.stringify(payload.blocks)).toContain("https://log.example.test/reports/report-1");
+});
