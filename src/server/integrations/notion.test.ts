@@ -198,14 +198,3 @@ describe("NotionReportService", () => {
     ]);
   });
 });
-
-
-it("links large videos to the app without failing Notion image sync", async () => {
-  const port = api();
-  const input = report({ attachments: [{ storagePath: "member/video.mp4", filename: "movie.mp4", mimeType: "video/mp4", sizeBytes: 50 * 1024 * 1024, sortOrder: 0 }] });
-  const result = await new NotionReportService(port, "https://log.example.test").sync(input, null);
-  expect(result.status).toBe("delivered");
-  expect(port.uploadFile).not.toHaveBeenCalled();
-  expect(port.appendImages).not.toHaveBeenCalled();
-  expect(port.createPage).toHaveBeenCalledWith(expect.objectContaining({ markdown: expect.stringContaining("[日報で動画を見る](https://log.example.test/reports/report-1)") }));
-});

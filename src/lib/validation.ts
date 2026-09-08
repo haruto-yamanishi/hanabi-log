@@ -1,4 +1,3 @@
-import { MEDIA_MIME_TYPES, MAX_ATTACHMENT_BYTES, mediaSizeLimit } from "@/lib/media";
 import { z } from "zod";
 import {
   ACTIVITY_AREAS,
@@ -6,6 +5,12 @@ import {
   REPORT_STATUSES,
   THEME_TAGS,
 } from "@/lib/constants";
+import {
+  MEDIA_MIME_TYPES,
+  REPORT_MEDIA_MAX_BYTES,
+  VIDEO_MAX_MIB,
+  maxBytesForMimeType,
+} from "@/lib/media";
 import { generateSummary, todayInJst } from "@/lib/text";
 
 const httpsUrl = z.string().url("URLの形式を確認してください").refine(
@@ -20,12 +25,6 @@ export const relatedLinkSchema = z.object({
   sortOrder: z.number().int().min(0).default(0),
 });
 
-const checkMediaSize = (value: { mimeType: string; sizeBytes: number }, context: z.RefinementCtx) => {
-  if (value.sizeBytes > mediaSizeLimit(value.mimeType)) {
-    context.addIssue({ code: "custom", path: ["sizeBytes"], message: "画像は1件5MiB、動画は1件50MiB以内にしてください" });
-  }
-};
-
 export const attachmentSchema = z.object({
   id: z.string().uuid().optional(),
   storagePath: z.string().min(1),
@@ -34,7 +33,17 @@ export const attachmentSchema = z.object({
   sizeBytes: z.number().int().positive(),
   altText: z.string().max(300).nullish(),
   sortOrder: z.number().int().min(0).default(0),
-}).superRefine(checkMediaSize);
+}).superRefine((file, context) => {
+  if (file.sizeBytes > maxBytesForMimeType(file.mimeType)) {
+    context.addIssue({
+      code: "custom",
+      path: ["sizeBytes"],
+      message: file.mimeType.startsWith("video/")
+        ? `動画は1件${VIDEO_MAX_MIB}MiB以内にしてください`
+        : "画像は1件5MiB以内にしてください",
+    });
+  }
+});
 
 export const reportInputSchema = z
   .object({
@@ -60,8 +69,12 @@ export const reportInputSchema = z
       });
     }
     const totalSize = value.attachments.reduce((sum, file) => sum + file.sizeBytes, 0);
-    if (totalSize > MAX_ATTACHMENT_BYTES) {
-      context.addIssue({ code: "custom", path: ["attachments"], message: "添付ファイルは合計100MiB以内にしてください" });
+    if (totalSize > REPORT_MEDIA_MAX_BYTES) {
+      context.addIssue({
+        code: "custom",
+        path: ["attachments"],
+        message: "画像・動画は合計200MiB以内にしてください",
+      });
     }
   })
   .transform((value) => ({
@@ -92,6 +105,33 @@ export const uploadRequestSchema = z.object({
   filename: z.string().min(1).max(255),
   mimeType: z.enum(MEDIA_MIME_TYPES),
   sizeBytes: z.number().int().positive(),
-}).superRefine(checkMediaSize);
+}).superRefine((file, context) => {
+  if (file.sizeBytes > maxBytesForMimeType(file.mimeType)) {
+    context.addIssue({
+      code: "custom",
+      path: ["sizeBytes"],
+      message: file.mimeType.startsWith("video/")
+        ? `動画は1件${VIDEO_MAX_MIB}MiB以内にしてください`
+        : "画像は1件5MiB以内にしてください",
+    });
+  }
+});
+
+export const uploadFinalizeSchema = z.object({
+  storagePath: z.string().min(1).max(1024),
+  filename: z.string().min(1).max(255),
+  mimeType: z.enum(MEDIA_MIME_TYPES),
+  sizeBytes: z.number().int().positive(),
+}).superRefine((file, context) => {
+  if (file.sizeBytes > maxBytesForMimeType(file.mimeType)) {
+    context.addIssue({
+      code: "custom",
+      path: ["sizeBytes"],
+      message: file.mimeType.startsWith("video/")
+        ? `動画は1件${VIDEO_MAX_MIB}MiB以内にしてください`
+        : "画像は1件5MiB以内にしてください",
+    });
+  }
+});
 
 export type ValidatedReportInput = z.output<typeof reportInputSchema>;

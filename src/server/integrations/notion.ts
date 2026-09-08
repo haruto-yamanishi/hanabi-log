@@ -1,6 +1,6 @@
-import { isVideo } from "@/lib/media";
 import { Client, type CreatePageParameters } from "@notionhq/client";
 
+import { isImageMimeType } from "@/lib/media";
 import type { Attachment, IntegrationBinding, Report } from "@/lib/types";
 import {
   IntegrationError,
@@ -201,7 +201,7 @@ function section(title: string, value: string): string | null {
   return `## ${title}\n${escapeNotionMarkdownText(trimmed)}`;
 }
 
-export function renderNotionMarkdown(report: Report, appBaseUrl?: string): string {
+export function renderNotionMarkdown(report: Report): string {
   const sections = [
     "> Webアプリから同期された日報です。内容の編集はWebアプリで行ってください。",
     section("今日やったこと", report.activityText),
@@ -220,11 +220,6 @@ export function renderNotionMarkdown(report: Report, appBaseUrl?: string): strin
     sections.push(`## 関連リンク\n${links.join("\n")}`);
   }
 
-  const videos = report.attachments.filter((attachment) => isVideo(attachment.mimeType));
-  if (videos.length) {
-    const url = appBaseUrl ? safeLinkUrl(appReportUrl(appBaseUrl, report.id)) : null;
-    sections.push(`## 動画\n${videos.map((video) => `- ${escapeNotionMarkdownText(video.filename)}`).join("\n")}\n\n${url ? `[日報で動画を見る](${url})` : "アプリURLから動画を確認できます。"}`);
-  }
   return `${sections.join("\n\n")}\n`;
 }
 
@@ -241,7 +236,7 @@ export class NotionReportService implements NotionReportIntegration {
     binding: IntegrationBinding | null,
   ): Promise<NotionSyncResult> {
     const properties = mapNotionProperties(report, this.appBaseUrl, binding);
-    const markdown = renderNotionMarkdown(report, this.appBaseUrl);
+    const markdown = renderNotionMarkdown(report);
     const icon = notionPageIcon(report);
 
     if (binding?.notionPageId) {
@@ -330,7 +325,9 @@ export class NotionReportService implements NotionReportIntegration {
     report: Report,
     textResult: NotionSyncResult,
   ): Promise<NotionSyncResult> {
-    const imageAttachments = report.attachments.filter((attachment) => !isVideo(attachment.mimeType));
+    const imageAttachments = report.attachments.filter((attachment) =>
+      isImageMimeType(attachment.mimeType),
+    );
     if (imageAttachments.length === 0) return textResult;
     if (!this.files) {
       return {

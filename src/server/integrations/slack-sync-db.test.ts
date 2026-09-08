@@ -26,13 +26,6 @@ import { listLikeNotificationHistory } from "./like-notification-history";
 import { processLikeNotifications } from "./like-notifications";
 import { PostgresReportRepository } from "@/server/repositories/postgres";
 
-function reportDms() {
-  return state.postMessage.mock.calls.filter(([message]) => message.text.includes("あなたの日報「"));
-}
-function memberDms() {
-  return state.postMessage.mock.calls.filter(([message]) => message.text.includes("累計いいね"));
-}
-
 const url = process.env.SLACK_SYNC_TEST_DATABASE_URL;
 describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
   let sql: ReturnType<typeof postgres>;
@@ -44,7 +37,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070004_member_like_milestones",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -121,7 +114,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     expect(state.reactions).toHaveBeenCalledTimes(1);
     await processLikeNotifications();
     await processLikeNotifications();
-    expect(reportDms()).toHaveLength(1);
+    expect(state.postMessage).toHaveBeenCalledTimes(1);
     expect(state.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "U_AUTHOR", text: expect.stringContaining("5人を超えました") }));
     const [history] = await listLikeNotificationHistory();
     expect(history).toMatchObject({ recipientName: "U_AUTHOR", recipientSlackUserId: "U_AUTHOR",
@@ -139,65 +132,27 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
       await repository.setReportLike(report.id, { id: member.id, slackUserId: `U_L${count}`, displayName: "Reader", role: "member", isActive: true }, true);
       if (count === 11) state.postMessage.mockRejectedValueOnce(new Error("Slack unavailable"));
       await processLikeNotifications();
-      if (count === 10) expect(reportDms()).toHaveLength(1);
+      if (count === 10) expect(state.postMessage).toHaveBeenCalledTimes(1);
       if (count === 11) {
         const [failed] = await sql`select * from report_like_notifications where threshold = 10`;
         expect(failed.sent_at).toBeNull();
         expect(failed.last_error).toBe("SLACK_DM_FAILED");
         await processLikeNotifications();
-        expect(reportDms()).toHaveLength(2);
+        expect(state.postMessage).toHaveBeenCalledTimes(2);
         await sql`update report_like_notifications set claimed_at = now() - interval '6 minutes' where threshold = 10`;
         await processLikeNotifications();
       }
-      if (count === 20) expect(reportDms()).toHaveLength(3);
-      if (count === 30) expect(reportDms()).toHaveLength(4);
+      if (count === 20) expect(state.postMessage).toHaveBeenCalledTimes(3);
+      if (count === 30) expect(state.postMessage).toHaveBeenCalledTimes(4);
     }
     expect(await sql`select * from report_like_notifications where sent_at is not null`).toHaveLength(4);
-    expect(reportDms()).toHaveLength(5); // Four milestones plus one failed attempt.
+    expect(state.postMessage).toHaveBeenCalledTimes(5); // Four milestones plus one failed attempt.
     const [member] = await sql`select id from members where slack_user_id = 'U_L31'`;
     const actor = { id: member.id, slackUserId: "U_L31", displayName: "Reader", role: "member" as const, isActive: true };
     await repository.setReportLike(report.id, actor, false);
     await repository.setReportLike(report.id, actor, true);
     await processLikeNotifications();
-    expect(reportDms()).toHaveLength(5);
-  });
-
-  it("generates 1–2–5 milestones and counts likes across reports at exact arrival", async () => {
-    for (const [total, expected] of [
-      [9, []], [10, [10]], [19, [10]], [20, [10, 20]],
-      [49, [10, 20]], [50, [10, 20, 50]],
-      [5000, [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]],
-    ] as const) {
-      const rows = await sql`select member_like_milestones(${total}) as threshold`;
-      expect(rows.map(row => Number(row.threshold))).toEqual(expected);
-    }
-    expect(memberDms()).toHaveLength(2); // Existing author has 31 likes: 10 and 20.
-    const second = { ...message, ts: "1788735999.000001", text: "別の日報" };
-    await send(second);
-    const [report] = await sql`select id from reports where activity_text = '別の日報'`;
-    await sql`insert into report_likes (report_id, member_id)
-      select ${report.id}, id from members where slack_user_id <> 'U_AUTHOR' limit 19`;
-    await processLikeNotifications();
-    expect(memberDms()).toHaveLength(3);
-    expect(memberDms().at(-1)?.[0]).toMatchObject({ channel: "U_AUTHOR", text: expect.stringContaining("50件に到達") });
-    const history = await listLikeNotificationHistory();
-    expect(history.find(item => item.kind === "member" && item.thresholds.includes(50))).toMatchObject({
-      reportId: null, recipientName: "変更後の名前", status: "sent", messageText: memberDms().at(-1)?.[0].text,
-    });
-    const [like] = await sql`select member_id from report_likes where report_id = ${report.id} limit 1`;
-    await sql`delete from report_likes where report_id = ${report.id} and member_id = ${like.member_id}`;
-    await sql`insert into report_likes (report_id, member_id) values (${report.id}, ${like.member_id})`;
-    await processLikeNotifications();
-    expect(memberDms()).toHaveLength(3);
-    // A jump over several unsent milestones is one cumulative DM at the highest.
-    await sql`insert into member_like_notifications (member_id, threshold)
-      select author_id, threshold from reports cross join (values (100), (200), (500)) milestones(threshold)
-      where id = ${report.id} on conflict do nothing`;
-    await processLikeNotifications();
-    expect(memberDms()).toHaveLength(4);
-    expect(memberDms().at(-1)?.[0].text).toContain("500件に到達");
-    const combined = (await listLikeNotificationHistory()).find(item => item.kind === "member" && item.thresholds.includes(500));
-    expect(combined?.thresholds).toEqual([100, 200, 500]);
+    expect(state.postMessage).toHaveBeenCalledTimes(5);
   });
 
   it("does not resurrect a report deleted on the Web when Slack is edited", async () => {

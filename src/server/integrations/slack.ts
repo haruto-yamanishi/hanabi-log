@@ -1,5 +1,6 @@
 import { WebClient, type ChatPostMessageArguments } from "@slack/web-api";
 
+import { isImageMimeType, isVideoMimeType } from "@/lib/media";
 import type { IntegrationBinding, Report } from "@/lib/types";
 import {
   IntegrationError,
@@ -200,9 +201,11 @@ export function renderSlackReport(
     });
   }
 
-  const visibleAttachments = [...report.attachments]
-    .sort((left, right) => left.sortOrder - right.sortOrder)
-    .filter((attachment) => attachment.signedUrl && attachment.mimeType.startsWith("image/"))
+  const imageAttachments = [...report.attachments]
+    .filter((attachment) => isImageMimeType(attachment.mimeType))
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+  const visibleAttachments = imageAttachments
+    .filter((attachment) => attachment.signedUrl)
     .slice(0, 10);
   for (const attachment of visibleAttachments) {
     blocks.push({
@@ -216,12 +219,23 @@ export function renderSlackReport(
       },
     });
   }
-  if (report.attachments.length > visibleAttachments.length) {
+  if (imageAttachments.length > visibleAttachments.length) {
     blocks.push({
       type: "context",
       elements: [{
         type: "mrkdwn",
-        text: `ほか ${report.attachments.length - visibleAttachments.length} 件の添付ファイル（画像・動画）は日報ページで確認できます。`,
+        text: `ほか ${imageAttachments.length - visibleAttachments.length} 件の画像は日報ページで確認できます。`,
+      }],
+    });
+  }
+
+  const videoCount = report.attachments.filter((attachment) => isVideoMimeType(attachment.mimeType)).length;
+  if (videoCount > 0) {
+    blocks.push({
+      type: "context",
+      elements: [{
+        type: "mrkdwn",
+        text: `動画 ${videoCount} 件は日報ページで再生できます。`,
       }],
     });
   }
@@ -351,8 +365,6 @@ export class SlackReportService implements SlackReportIntegration {
       });
       return { ...input, permalink };
     } catch (error) {
-      // The message itself has already been posted or updated. Return its IDs so
-      // the retry updates that exact message instead of posting a duplicate.
       if (input.fallbackPermalink) {
         return { ...input, permalink: input.fallbackPermalink };
       }

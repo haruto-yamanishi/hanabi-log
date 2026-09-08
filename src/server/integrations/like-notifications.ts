@@ -3,7 +3,6 @@ import { WebClient } from "@slack/web-api";
 import { after } from "next/server";
 import { getDatabase } from "@/server/db/client";
 import { env, isDemoMode } from "@/server/env";
-import { processMemberLikeNotifications } from "@/server/integrations/member-like-notifications";
 
 export function scheduleLikeNotifications(): void {
   after(async () => {
@@ -62,5 +61,4 @@ export async function processLikeNotifications(): Promise<void> {
       console.error("Slack like milestone DM failed; retained for retry", { reportId: claimed.id });
     }
   }
-  await processMemberLikeNotifications(client);
 }

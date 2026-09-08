@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STORAGE_BUCKET_MAX_BYTES, VIDEO_MAX_BYTES, VIDEO_MAX_MIB } from "@/lib/media";
 import { reportInputSchema, uploadRequestSchema } from "@/lib/validation";
 
 const valid = {
@@ -38,32 +39,35 @@ describe("reportInputSchema", () => {
     const result = reportInputSchema.safeParse({ ...valid, reportDate: "2999-01-01" });
     expect(result.success).toBe(false);
   });
-});
 
+  it(`keeps images at 5 MiB, videos at ${VIDEO_MAX_MIB} MiB, and caps a report at 200 MiB`, () => {
+    const image = {
+      storagePath: "owner/photo.jpg",
+      filename: "photo.jpg",
+      mimeType: "image/jpeg" as const,
+      sizeBytes: 5 * 1024 * 1024,
+    };
+    const video = {
+      storagePath: "owner/run.mp4",
+      filename: "run.mp4",
+      mimeType: "video/mp4" as const,
+      sizeBytes: VIDEO_MAX_BYTES,
+    };
 
-describe("media uploads", () => {
-  const attachment = { storagePath: "member/video.mp4", filename: "video.mp4", mimeType: "video/mp4", sizeBytes: 50 * 1024 * 1024 };
-
-  it.each(["video/mp4", "video/quicktime", "video/webm"])("accepts %s through upload and report validation", (mimeType) => {
-    const file = { ...attachment, mimeType };
-    expect(uploadRequestSchema.safeParse(file).success).toBe(true);
-    expect(reportInputSchema.safeParse({ ...valid, attachments: [file] }).success).toBe(true);
+    expect(VIDEO_MAX_BYTES).toBeLessThanOrEqual(STORAGE_BUCKET_MAX_BYTES);
+    expect(uploadRequestSchema.safeParse(image).success).toBe(true);
+    expect(uploadRequestSchema.safeParse({ ...image, sizeBytes: image.sizeBytes + 1 }).success).toBe(false);
+    expect(uploadRequestSchema.safeParse(video).success).toBe(true);
+    expect(uploadRequestSchema.safeParse({ ...video, sizeBytes: video.sizeBytes + 1 }).success).toBe(false);
+    expect(reportInputSchema.safeParse({ ...valid, attachments: [video, video, video, video] }).success).toBe(true);
+    expect(reportInputSchema.safeParse({
+      ...valid,
+      attachments: [video, video, video, video, image, image, image],
+    }).success).toBe(false);
   });
 
-  it("enforces image and video size limits on both APIs", () => {
-    for (const file of [
-      { ...attachment, sizeBytes: attachment.sizeBytes + 1 },
-      { ...attachment, mimeType: "image/png", sizeBytes: 5 * 1024 * 1024 + 1 },
-      { ...attachment, sizeBytes: 0 },
-      { ...attachment, mimeType: "application/javascript" },
-    ]) {
-      expect(uploadRequestSchema.safeParse(file).success).toBe(false);
-      expect(reportInputSchema.safeParse({ ...valid, attachments: [file] }).success).toBe(false);
-    }
-  });
-
-  it("enforces the combined attachment limit", () => {
-    expect(reportInputSchema.safeParse({ ...valid, attachments: [attachment, attachment] }).success).toBe(true);
-    expect(reportInputSchema.safeParse({ ...valid, attachments: [attachment, attachment, { ...attachment, sizeBytes: 1 }] }).success).toBe(false);
+  it("rejects unsupported image and video formats on the server", () => {
+    expect(uploadRequestSchema.safeParse({ filename: "photo.heic", mimeType: "image/heic", sizeBytes: 1024 }).success).toBe(false);
+    expect(uploadRequestSchema.safeParse({ filename: "clip.mov", mimeType: "video/quicktime", sizeBytes: 1024 }).success).toBe(false);
   });
 });

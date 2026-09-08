@@ -7,25 +7,16 @@ export async function listLikeNotificationHistory(): Promise<LikeNotificationHis
   if (isDemoMode) return [];
   const sql = getDatabase();
   // Several milestones can share one DM. Show that delivery as one entry.
-  const rows = await sql`with notifications as (
-      select 'report' as kind, notification.report_id, reports.author_id as member_id,
-        notification.threshold::bigint, notification.recipient_name, notification.recipient_slack_user_id,
-        notification.message_text, notification.sent_at, notification.claimed_at, notification.last_error,
-        notification.delivery_threshold::bigint
-      from report_like_notifications notification join reports on reports.id = notification.report_id
-      union all
-      select 'member', null::uuid, member_id, threshold, recipient_name, recipient_slack_user_id,
-        message_text, sent_at, claimed_at, last_error, delivery_threshold from member_like_notifications
-    ) select notification.kind, notification.member_id, notification.report_id, reports.title,
+  const rows = await sql`select notification.report_id, reports.title,
       coalesce(notification.recipient_name, members.display_name) as recipient_name,
       coalesce(notification.recipient_slack_user_id, members.slack_user_id) as recipient_slack_user_id,
       notification.recipient_slack_user_id is not null as recipient_recorded,
       array_agg(notification.threshold order by notification.threshold) as thresholds,
       notification.message_text, notification.sent_at, notification.claimed_at, notification.last_error
-    from notifications notification
-    left join reports on reports.id = notification.report_id
-    join members on members.id = notification.member_id
-    group by notification.kind, notification.member_id, notification.report_id, reports.title, members.display_name, members.slack_user_id,
+    from report_like_notifications notification
+    join reports on reports.id = notification.report_id
+    join members on members.id = reports.author_id
+    group by notification.report_id, reports.title, members.display_name, members.slack_user_id,
       notification.recipient_name, notification.recipient_slack_user_id, notification.message_text,
       notification.sent_at, notification.claimed_at, notification.last_error,
       coalesce(notification.delivery_threshold, notification.threshold)
@@ -34,9 +25,9 @@ export async function listLikeNotificationHistory(): Promise<LikeNotificationHis
     limit 100`;
   const iso = (value: Date | null) => value?.toISOString() ?? null;
   return rows.map(row => ({
-    kind: row.kind, memberId: row.member_id, reportId: row.report_id, reportTitle: row.title,
+    reportId: row.report_id, reportTitle: row.title,
     recipientName: row.recipient_name, recipientSlackUserId: row.recipient_slack_user_id,
-    recipientRecorded: row.recipient_recorded, thresholds: row.thresholds.map(Number),
+    recipientRecorded: row.recipient_recorded, thresholds: row.thresholds,
     messageText: row.message_text, sentAt: iso(row.sent_at), attemptedAt: iso(row.claimed_at),
     status: row.sent_at ? "sent" : row.last_error ? "failed"
       : row.claimed_at && Date.now() - row.claimed_at.getTime() < 300000 ? "processing" : "pending",

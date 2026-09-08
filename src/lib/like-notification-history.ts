@@ -1,8 +1,6 @@
 export interface LikeNotificationHistory {
-  kind: "report" | "member";
-  memberId: string;
-  reportId: string | null;
-  reportTitle: string | null;
+  reportId: string;
+  reportTitle: string;
   recipientName: string;
   recipientSlackUserId: string;
   recipientRecorded: boolean;
