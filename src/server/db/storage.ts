@@ -66,7 +66,9 @@ async function ensureStorageBucketConfiguration(): Promise<void> {
       {
         public: false,
         fileSizeLimit: STORAGE_BUCKET_MAX_BYTES,
-        allowedMimeTypes: [...MEDIA_MIME_TYPES],
+        // Server-written verification records live beside media in this private bucket.
+        // Keep JSON out of MEDIA_MIME_TYPES so users cannot request JSON uploads.
+        allowedMimeTypes: [...MEDIA_MIME_TYPES, "application/json"],
       },
     );
     if (error) {

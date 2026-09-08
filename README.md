@@ -51,6 +51,8 @@ npm run dev
 10. Transaction poolerの接続文字列を `DATABASE_URL` に設定します。
 11. Project URLとSecret keyをそれぞれ `SUPABASE_URL`、`SUPABASE_SECRET_KEY` に設定します。
 
+添付の検証結果を保存するため、`supabase/migrations/202609080002_upload_verification_json.sql` も適用します。非公開バケットでは内部処理用の `application/json` を許可する必要があります。これが欠けると「アップロード検証結果を保存できませんでした」となります。ユーザーが添付できる形式は画像・動画のみです。
+
 DBとStorageへのアクセスはサーバー側だけに限定します。Secret keyを `NEXT_PUBLIC_` 変数へ設定しないでください。
 
 ### 日次バックアップ運用
