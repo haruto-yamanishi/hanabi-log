@@ -5,8 +5,6 @@ import { env, isDemoMode } from "@/server/env";
 
 const HANABI_LOG_BASE_URL = "https://log.9494hanabi.com";
 const FEATURED_REPORT_PROBABILITY = 0.3;
-const INACTIVITY_DAYS = 14;
-const CLAIM_COOLDOWN_MINUTES = 5;
 
 interface InactiveMemberRow {
   id: string;
@@ -144,7 +142,7 @@ async function claimEpisode(
         and target_type = 'member'
         and target_id = ${member.id}
         and metadata_json ->> 'episode_key' = ${key}
-        and occurred_at > now() - interval '${tx.unsafe(String(CLAIM_COOLDOWN_MINUTES))} minutes'
+        and occurred_at > now() - interval '5 minutes'
       limit 1
     `;
     if (recentClaim.length) return false;
@@ -167,7 +165,6 @@ async function recordDelivery(
     member: InactiveMemberRow;
     key: string;
     report: RecommendationRow;
-    text: string;
     channelId: string | null;
     messageTs: string | null;
     featured: boolean;
@@ -228,7 +225,7 @@ export async function processContributionNudges(): Promise<ContributionNudgeResu
     where members.is_active = true
       and members.slack_team_id = ${env.SLACK_TEAM_ID}
       and coalesce(activity.last_contribution_at, members.created_at)
-        <= now() - interval '${sql.unsafe(String(INACTIVITY_DAYS))} days'
+        <= now() - interval '14 days'
     order by coalesce(activity.last_contribution_at, members.created_at), members.id
     limit 100
   `;
@@ -294,7 +291,6 @@ export async function processContributionNudges(): Promise<ContributionNudgeResu
         member,
         key,
         report: recommendation,
-        text,
         channelId: message.channel ?? null,
         messageTs: message.ts ?? null,
         featured: featuredSlackUserId !== null && recommendation.author_slack_user_id === featuredSlackUserId,
