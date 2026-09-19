@@ -4,17 +4,17 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ACTIVITY_AREAS, activityAreaClassName, type ActivityArea } from "@/lib/constants";
 import { todayInJst } from "@/lib/text";
-import type { ReportListItem, ReportPage } from "@/lib/types";
+import type { ContributionSummary, CurrentUser, ReportListItem, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
 import { ArrowRightIcon, CalendarIcon, PlusIcon } from "@/components/icons";
-import { ReportCard } from "@/components/report-card";
+import { ReportCard } from "@/components/report-card";\nimport { ContributionNudge } from "@/components/contribution-nudge";
 import { EmptyState, ErrorState, SkeletonList } from "@/components/ui";
 
 export function HomeScreen() {
   const [reports, setReports] = useState<ReportListItem[]>([]);
   const [area, setArea] = useState<ActivityArea | "">("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);\n  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);\n  const [contributions, setContributions] = useState<ContributionSummary | null>(null);
 
   const loadReports = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -40,6 +40,29 @@ export function HomeScreen() {
       controller.abort();
     };
   }, [loadReports]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadContributionState = async () => {
+      try {
+        const me = await apiRequest<CurrentUser>("/api/me", { signal: controller.signal });
+        setCurrentUser(me);
+        if (!me.isActive) return;
+        const summary = await apiRequest<ContributionSummary>("/api/me/contributions", { signal: controller.signal });
+        setContributions(summary);
+      } catch (cause) {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        // The reminder is supplementary; home should remain usable if it cannot load.
+      }
+    };
+
+    const timeout = window.setTimeout(() => void loadContributionState(), 0);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
 
   const today = todayInJst();
   const todayReports = useMemo(() => reports.filter((report) => report.reportDate === today), [reports, today]);
