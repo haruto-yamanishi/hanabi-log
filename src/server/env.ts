@@ -35,6 +35,7 @@ const schema = z.object({
   NOTION_DATABASE_ID: z.string().default("212fffe9-1997-4b7c-a631-13629baa8977"),
   NOTION_DATA_SOURCE_ID: z.string().default("aff207bb-2f47-4f19-beba-ae9556bdf442"),
   ADMIN_SLACK_USER_IDS: optional,
+  CONTRIBUTION_NUDGE_FEATURED_SLACK_USER_ID: optional,
   CRON_SECRET: optional,
 });
 
