@@ -10,6 +10,15 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: eslint
+        versions:
+          - ">=10.0.0"
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -20,3 +29,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      github-actions:
+        patterns:
+          - "*"
