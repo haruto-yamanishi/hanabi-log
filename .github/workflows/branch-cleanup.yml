@@ -1,0 +1,37 @@
+name: Branch Cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/branch-cleanup.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete stale branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in "feat/slack-contribution-nudges" "feat/14-day-contribution-nudge"; do
+            echo "Deleting ${branch}"
+            encoded="${branch//\//%2F}"
+            status="$(curl --silent --show-error --output /tmp/delete-response --write-out "%{http_code}" \
+              --request DELETE \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs/heads/${encoded}")"
+            if [ "${status}" != "204" ] && [ "${status}" != "422" ]; then
+              cat /tmp/delete-response
+              echo "Failed to delete ${branch}: HTTP ${status}"
+              exit 1
+            fi
+          done
