@@ -63,6 +63,26 @@ DatabaseとStorageは別々に、1日1回以上バックアップします。
 - **Storage:** DatabaseバックアップにはStorageオブジェクト本体が含まれないため、Private bucket `hanabi-log-private` の全オブジェクトを[`supabase storage` またはS3互換クライアント](https://supabase.com/docs/guides/storage/management/download-objects)で日次コピーし、Databaseとは別のPrivateな退避先へ保存します。
 - バックアップの保存期間、実行担当、失敗通知を決め、少なくとも月1回はDatabaseとStorageの両方を同じ時点へ復元できることを検証します。dump、画像、資格情報はGitへ追加しないでください。
 
+## 登録済みメンター用Google認証
+
+Slackのゲストなど、Slack認証を利用できないメンター向けにGoogle認証を追加できます。
+許可するメールアドレスはサーバー側の環境変数で管理します。管理画面での登録には対応していません。
+
+1. Google CloudでOAuthクライアント（ウェブアプリケーション）を作成し、承認済みリダイレクトURIに `${APP_BASE_URL}/api/auth/callback/google` を登録します。
+2. OAuth同意画面を設定します。外部向けでテスト中の場合は、対象メンターをテストユーザーにも登録します。
+3. `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を設定します。
+4. `GOOGLE_MENTOR_ACCOUNTS` にメールアドレスと対象ワークスペースの実際のSlackメンバーIDのJSONを設定します。例: `{"mentor@example.com":"U0123456789"}`。SlackのプロフィールからメンバーIDをコピーし、本人のIDであることを確認してください。
+5. 再デプロイするとログイン画面にGoogleボタンが表示されます。
+
+Googleが確認済みとしたメールだけを完全一致で許可します（前後の空白・大文字小文字は正規化）。
+Gmailのドットや `+alias`、ドメイン単位の許可は展開しません。不正な設定や未登録メールは拒否します。
+メールアドレスを削除または紐づけ先を変更して再デプロイすると、既存Googleセッションも次のサーバー側認証確認で無効になります。
+既存のSlackメンバーと同じ投稿・権限・Active状態を使用し、新規登録時は通常メンバーになります。
+Googleログイン時に表示名・メール・アバターはGoogleの情報へ更新されます。
+Google認証はSlack自体のチャンネル閲覧権限を変更しません。
+
+仕様参考: [NextAuth Google provider](https://next-auth.js.org/providers/google)
+
 ## Slackセットアップ
 
 Slack Appで、ログイン用OIDCとBot配信を分けて設定します。
