@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Opt in with an empty LOCAL PostgreSQL database; never uses DATABASE_URL.
 const state = vi.hoisted(() => ({ after: [] as (() => Promise<void>)[], sql: undefined as unknown,
-  reactions: vi.fn(), postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "123.456" }),
+  replies: vi.fn(), reactions: vi.fn(), postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "123.456" }),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ after: (callback: () => Promise<void>) => state.after.push(callback) }));
@@ -16,6 +16,7 @@ vi.mock("@/server/db/client", () => ({ getDatabase: () => state.sql }));
 vi.mock("@/server/integrations/outbox", () => ({ processPendingJobs: vi.fn() }));
 vi.mock("@slack/web-api", () => ({ WebClient: class {
   reactions = { get: state.reactions };
+  conversations = { replies: state.replies };
   chat = { postMessage: state.postMessage };
   users = { info: async ({ user }: { user: string }) => ({ user: { name: user, profile: {} } }) };
 } }));
@@ -23,6 +24,7 @@ vi.mock("@slack/web-api", () => ({ WebClient: class {
 import { POST } from "@/app/api/integrations/slack/events/route";
 import { importPastSlackReactions } from "./slack-reaction-backfill";
 import { listLikeNotificationHistory } from "./like-notification-history";
+import { cleanupOperationalData } from "@/server/maintenance/retention";
 import { processLikeNotifications } from "./like-notifications";
 import { PostgresReportRepository } from "@/server/repositories/postgres";
 
@@ -37,7 +39,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -102,6 +104,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     const [reader] = await sql`select id from members where slack_user_id = 'U_READER'`;
     await sql`update report_likes set web_liked = true where member_id = ${reader.id}`;
     const users = ["U_READER", "U_H0", "U_H1", "U_H2", "U_H3"];
+    state.replies.mockResolvedValue({ messages: [{ ts: message.ts }] });
     state.reactions.mockResolvedValue({ message: { reactions: [
       { name: "heart", users, count: users.length },
       { name: "tada", users, count: users.length },
@@ -132,27 +135,157 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
       await repository.setReportLike(report.id, { id: member.id, slackUserId: `U_L${count}`, displayName: "Reader", role: "member", isActive: true }, true);
       if (count === 11) state.postMessage.mockRejectedValueOnce(new Error("Slack unavailable"));
       await processLikeNotifications();
-      if (count === 10) expect(state.postMessage).toHaveBeenCalledTimes(1);
+      if (count === 10) expect(state.postMessage).toHaveBeenCalledTimes(0);
       if (count === 11) {
         const [failed] = await sql`select * from report_like_notifications where threshold = 10`;
         expect(failed.sent_at).toBeNull();
         expect(failed.last_error).toBe("SLACK_DM_FAILED");
         await processLikeNotifications();
-        expect(state.postMessage).toHaveBeenCalledTimes(2);
+        expect(state.postMessage).toHaveBeenCalledTimes(1);
         await sql`update report_like_notifications set claimed_at = now() - interval '6 minutes' where threshold = 10`;
         await processLikeNotifications();
       }
-      if (count === 20) expect(state.postMessage).toHaveBeenCalledTimes(3);
-      if (count === 30) expect(state.postMessage).toHaveBeenCalledTimes(4);
+      if (count === 20) expect(state.postMessage).toHaveBeenCalledTimes(2);
+      if (count === 30) expect(state.postMessage).toHaveBeenCalledTimes(3);
     }
     expect(await sql`select * from report_like_notifications where sent_at is not null`).toHaveLength(4);
-    expect(state.postMessage).toHaveBeenCalledTimes(5); // Four milestones plus one failed attempt.
+    expect(state.postMessage).toHaveBeenCalledTimes(4); // Three new milestones plus one failed attempt; the first was sent in the preceding test.
     const [member] = await sql`select id from members where slack_user_id = 'U_L31'`;
     const actor = { id: member.id, slackUserId: "U_L31", displayName: "Reader", role: "member" as const, isActive: true };
     await repository.setReportLike(report.id, actor, false);
     await repository.setReportLike(report.id, actor, true);
     await processLikeNotifications();
-    expect(state.postMessage).toHaveBeenCalledTimes(5);
+    expect(state.postMessage).toHaveBeenCalledTimes(4);
+  });
+
+
+  it("counts reply reactions once per report and preserves other messages and Web likes on removal", async () => {
+    const [report] = await sql`select id from reports`;
+    const before = (await sql`select * from report_likes`).length;
+    const replyA = "1788736000.000001";
+    const replyB = "1788736001.000001";
+    state.reactions.mockImplementation(async ({ timestamp }: { timestamp: string }) => ({
+      message: { ts: timestamp, thread_ts: message.ts },
+    }));
+    const event = (type: string, ts: string, time: number, emoji = "heart") => ({
+      ...reaction(type, emoji, time, "U_COMMENT_READER"),
+      item: { type: "message", channel: "C_TEST", ts },
+    });
+    await send(event("reaction_added", replyA, 1788736100));
+    expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+    await send(event("reaction_added", replyB, 1788736101));
+    await send(event("reaction_added", message.ts, 1788736102));
+    await send(event("reaction_added", replyA, 1788736103, "tada"));
+    expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+    await send(event("reaction_removed", message.ts, 1788736104));
+    await send(event("reaction_removed", replyB, 1788736105));
+    await send(event("reaction_removed", replyA, 1788736106, "heart"));
+    expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+    // Exercise retry mode too: processed reactions on other messages must still count.
+    process.env.SLACK_INGESTION_RETRY_MODE = "enforce";
+    try {
+      await send(event("reaction_added", replyB, 1788736107));
+      await send(event("reaction_removed", replyA, 1788736108, "tada"));
+      expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+      const [reader] = await sql`select id from members where slack_user_id = 'U_COMMENT_READER'`;
+      const repository = new PostgresReportRepository();
+      const actor = { id: reader.id, slackUserId: "U_COMMENT_READER", displayName: "Reader", role: "member" as const, isActive: true };
+      await repository.setReportLike(report.id, actor, true);
+      await send(event("reaction_removed", replyB, 1788736109));
+      expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+      await repository.setReportLike(report.id, actor, false);
+      expect(await sql`select * from report_likes`).toHaveLength(before);
+      await send(event("reaction_added", replyB, 1788736107));
+      expect(await sql`select * from report_likes`).toHaveLength(before);
+    } finally {
+      delete process.env.SLACK_INGESTION_RETRY_MODE;
+    }
+  });
+
+  it("resolves replies that arrive before their report without importing unrelated threads", async () => {
+    const parent = "1788737000.000001";
+    const reply = "1788737001.000001";
+    state.reactions.mockImplementation(async ({ timestamp }: { timestamp: string }) => ({
+      message: { ts: timestamp, thread_ts: timestamp === reply ? parent : "99999.000001" },
+    }));
+    await send({ ...reaction("reaction_added", "heart", 1788737002, "U_EARLY"),
+      item: { type: "message", channel: "C_TEST", ts: reply } });
+    const before = (await sql`select * from report_likes`).length;
+    await send({ ...reaction("reaction_added", "heart", 1788737003, "U_UNRELATED"),
+      item: { type: "message", channel: "C_TEST", ts: "1788737004.000001" } });
+    expect(await sql`select * from report_likes`).toHaveLength(before);
+    await send({ ...message, ts: parent });
+    expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+    const [binding] = await sql`select report_id from integration_bindings where slack_message_ts = ${parent}`;
+    await sql`delete from reports where id = ${binding.report_id}`;
+  });
+
+  it("backfills paginated reply reactions without resurrecting newer removals", async () => {
+    const [report] = await sql`select id from reports`;
+    const before = (await sql`select * from report_likes`).length;
+    const reply = "1788738000.000001";
+    await sql`update integration_bindings set slack_thread_reactions_imported_at = null where report_id = ${report.id}`;
+    await sql`insert into slack_report_reactions (channel_id, message_ts, user_id, reaction, active, event_ts)
+      values ('C_TEST', ${reply}, 'U_REMOVED', 'heart', false, 1788738001)`;
+    state.replies.mockResolvedValueOnce({
+      messages: [{ ts: message.ts }], has_more: true, response_metadata: { next_cursor: "next-page" },
+    }).mockResolvedValueOnce({
+      messages: [{ ts: reply, thread_ts: message.ts, reactions: [{ name: "heart" }] }], has_more: false,
+    });
+    state.reactions.mockImplementation(async ({ timestamp }: { timestamp: string }) => ({
+      message: { ts: timestamp, thread_ts: message.ts, reactions: timestamp === reply
+        ? [{ name: "heart", count: 2, users: ["U_BACKFILL_COMMENT", "U_REMOVED"] }]
+        : [] },
+    }));
+    expect(await importPastSlackReactions()).toMatchObject({ remaining: 1 });
+    expect(await importPastSlackReactions()).toMatchObject({ remaining: 0, pending: 0 });
+    expect(state.replies).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "next-page" }));
+    expect(await sql`select * from report_likes`).toHaveLength(before + 1);
+    expect(await sql`select * from members where slack_user_id = 'U_BACKFILL_COMMENT'`).toHaveLength(1);
+    const [removed] = await sql`select active from slack_report_reactions where message_ts = ${reply} and user_id = 'U_REMOVED'`;
+    expect(removed.active).toBe(false);
+  });
+
+
+  it("does not advance the backfill cursor when Slack omits reaction users", async () => {
+    const [report] = await sql`select id from reports`;
+    await sql`update integration_bindings set slack_thread_reactions_imported_at = null where report_id = ${report.id}`;
+    state.replies.mockResolvedValue({ messages: [{ ts: message.ts }] });
+    state.reactions.mockResolvedValue({ message: { reactions: [{ name: "heart", count: 2, users: ["U_PARTIAL"] }] } });
+    await expect(importPastSlackReactions()).rejects.toThrow("全ユーザー");
+    const [binding] = await sql`select * from integration_bindings where report_id = ${report.id}`;
+    expect(binding.slack_thread_reactions_imported_at).toBeNull();
+    expect(binding.slack_thread_reactions_cursor).toBeNull();
+    expect(await sql`select * from slack_report_reactions where user_id = 'U_PARTIAL'`).toHaveLength(0);
+  });
+
+  it("preserves historical active reactions and removal tombstones during retention cleanup", async () => {
+    const historical = await sql`select * from slack_report_reactions
+      where processed_at is not null and event_ts = 0`;
+    expect(historical.length).toBeGreaterThan(0);
+    await sql`insert into slack_report_reactions (channel_id, message_ts, slack_thread_ts, user_id, reaction, active, event_ts, processed_at)
+      values ('C_TEST', '1.000001', '1.000001', 'U_ORPHAN', 'heart', false, 0, now())`;
+    await cleanupOperationalData();
+    expect(await sql`select * from slack_report_reactions where user_id = 'U_ORPHAN'`).toHaveLength(0);
+    for (const row of historical) {
+      const [retained] = await sql`select * from slack_report_reactions where channel_id = ${row.channel_id}
+        and message_ts = ${row.message_ts} and user_id = ${row.user_id} and reaction = ${row.reaction}`;
+      expect(retained).toMatchObject({ active: row.active });
+    }
+  });
+
+  it("retains failed thread lookups for retry without blocking later comments", async () => {
+    const before = (await sql`select * from report_likes`).length;
+    state.reactions.mockRejectedValueOnce(new Error("Slack unavailable"));
+    await send({ ...reaction("reaction_added", "heart", 1788739002, "U_RETRY"),
+      item: { type: "message", channel: "C_TEST", ts: "1788739000.000001" } });
+    const [pending] = await sql`select * from slack_report_reactions where user_id = 'U_RETRY'`;
+    expect(pending.slack_thread_ts).toBeNull();
+    expect(pending.processed_at).toBeNull();
+    state.reactions.mockResolvedValue({ message: { ts: "1788739001.000001", thread_ts: message.ts } });
+    await send({ ...reaction("reaction_added", "heart", 1788739003, "U_LATER"),
+      item: { type: "message", channel: "C_TEST", ts: "1788739001.000001" } });
+    expect(await sql`select * from report_likes`).toHaveLength(before + 1);
   });
 
   it("does not resurrect a report deleted on the Web when Slack is edited", async () => {

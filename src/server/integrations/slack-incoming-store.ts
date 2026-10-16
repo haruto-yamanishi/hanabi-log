@@ -6,13 +6,15 @@ import { resolveReportTitle } from "@/lib/report-title";
 import { toHanabiReportDate } from "@/lib/timezone";
 import { slackIngestionRetryEnabled } from "@/server/integrations/slack-incoming-retry-mode";
 
+import { resolveSlackReactionThreads } from "@/server/integrations/slack-reaction-threads";
+
 const MAX_INGESTION_ATTEMPTS = 5;
 
 export async function processIncomingSlackReports(): Promise<void> {
   if (isDemoMode || !env.SLACK_TEAM_ID || !env.SLACK_BOT_TOKEN) return;
   const sql = getDatabase();
   const retryEnabled = slackIngestionRetryEnabled();
-  const client = new WebClient(env.SLACK_BOT_TOKEN, { retryConfig: { retries: 0 }, timeout: 5000 });
+  const client = new WebClient(env.SLACK_BOT_TOKEN, { retryConfig: { retries: 0 }, rejectRateLimitedCalls: true, timeout: 5000 });
   const pending = retryEnabled
     ? await sql`select * from slack_incoming_reports
         where processed_at is null and dead_at is null and available_at <= now()
@@ -119,20 +121,21 @@ export async function processIncomingSlackReports(): Promise<void> {
       }
     }
   }
+  await resolveSlackReactionThreads(client);
   await processSlackReactions(client, retryEnabled);
 }
 
 async function processSlackReactions(client: WebClient, retryEnabled: boolean): Promise<void> {
   const sql = getDatabase();
   const pending = retryEnabled
-    ? await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id
+    ? await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
         from slack_report_reactions reaction
-        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = reaction.message_ts
+        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
         where reaction.processed_at is null and reaction.dead_at is null and reaction.available_at <= now()
         limit 20`
-    : await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id
+    : await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
         from slack_report_reactions reaction
-        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = reaction.message_ts
+        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
         where reaction.processed_at is null limit 20`;
 
   for (const reaction of pending) {
@@ -161,14 +164,13 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
           }
           return;
         }
-        const states = retryEnabled
-          ? await tx`select reaction, active from slack_report_reactions
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}
-                and processed_at is null and dead_at is null
-              order by reaction for update`
-          : await tx`select reaction, active from slack_report_reactions
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}
-              order by reaction for update`;
+        // Lock every source for this person in the report, including already processed
+        // emojis. Removing one reply's reaction must preserve likes on other replies.
+        const states = await tx`select message_ts, reaction, active from slack_report_reactions
+          where channel_id = ${reaction.channel_id}
+            and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
+            and user_id = ${reaction.user_id}
+          order by message_ts, reaction for update`;
         if (!existing.length) {
           const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(reaction.user_id);
           await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role)
@@ -187,11 +189,11 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
         for (const state of states) {
           if (retryEnabled) {
             await tx`update slack_report_reactions set processed_at = now(), last_error = null
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+              where channel_id = ${reaction.channel_id} and message_ts = ${state.message_ts}
                 and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
           } else {
             await tx`update slack_report_reactions set processed_at = now()
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+              where channel_id = ${reaction.channel_id} and message_ts = ${state.message_ts}
                 and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
           }
         }

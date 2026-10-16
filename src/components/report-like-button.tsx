@@ -68,7 +68,7 @@ export function ReportLikeButton({
           ))}
         </ul>
       ) : <small className="report-like__empty">まだいいねはありません</small>}
-      <small>Slackのスタンプと合わせて1人1件。解除は押したサービス側で行えます。</small>
+      <small>日報・コメントのSlackスタンプとWebのいいねを合わせて1人1件。解除は押したサービス側で行えます。</small>
       {error ? <small className="report-like__error" role="alert">{error}</small> : null}
     </div>
   );

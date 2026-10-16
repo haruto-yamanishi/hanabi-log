@@ -12,6 +12,20 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      slack-sync-postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: slack_sync_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d slack_sync_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       APP_BASE_URL: http://localhost:3000
       AUTH_SECRET: ci-only-auth-secret-ci-only-auth-secret
@@ -45,6 +59,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+        env:
+          SLACK_SYNC_TEST_DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/slack_sync_test
       - run: npm run build
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e

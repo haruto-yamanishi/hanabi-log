@@ -183,9 +183,9 @@ Event Subscriptionsのbot eventsへ `reaction_added` と `reaction_removed` を�
 イベントと権限は[Slack公式のreaction_added仕様](https://docs.slack.dev/reference/events/reaction_added/)に従います。
 
 - Slackから取り込んだ投稿の本文編集は、同じWeb日報の本文・要約へ反映し、Notionも更新します。日付・分類・承認状態は維持し、活動実績は増やしません。
-- 日報に紐づいたSlackの親投稿へのスタンプは、種類を問わずいいねとして数えます。WebからSlackへ配信した日報も対象です。
+- 日報に紐づいたSlackの親投稿とコメント（スレッド返信）へのスタンプは、種類を問わずいいねとして数えます。WebからSlackへ配信した日報も対象です。
 - 同じ人の複数スタンプとWebのいいねは合計1件。スタンプをすべて外してもWebのいいねが残れば1件を維持し、逆も同様です。
-- WebのボタンはWeb側のいいねを操作し、人数とメンバー一覧はSlackとの合計を表示します。
+- WebのボタンはWeb側のいいねを操作し、人数とメンバー一覧はSlackとの合計を表示します。同じ人が親投稿・複数コメント・Webで押しても、日報全体で1人1件です。一部を解除しても別の場所にいいねが残っていれば維持します。
 - 過去のスタンプは、管理画面の「同期管理」から一括取り込みできます。通常は追加・削除イベントで反映します。
 
 必要な場合のローカルDB検証（空のローカルPostgreSQLテストDBを指定。本番の `DATABASE_URL` は使いません）:
@@ -198,9 +198,9 @@ SLACK_SYNC_TEST_DATABASE_URL=postgres://USER@127.0.0.1:PORT/EMPTY_TEST_DB npm ru
 ### 過去スタンプの取り込み・いいねのDM通知
 
 `supabase/migrations/202609070002_like_notifications.sql` を適用してデプロイします。
-追加の環境変数やSlack権限は不要です。既存の `reactions:read`・`users:read`・`chat:write` を使用します。
+追加の環境変数は不要です。既存の `reactions:read`・`users:read`・`chat:write` と、コメント表示で使う履歴閲覧権限（`channels:history` / `groups:history`）を使用します。
 
-管理画面 → 同期管理 → **過去のスタンプを取り込む** を押すと、Web日報に紐づいたSlackの親投稿を順番に取り込みます。
+管理画面 → 同期管理 → **過去のスタンプを取り込む** を押すと、Web日報に紐づいたSlackの親投稿とスレッド返信を順番に取り込みます。
 画面を閉じたりエラーで止まった場合も、再度押すと未取得分から再開します。Slackイベントで受信済みの追加・削除を優先し、Webいいねは維持します。
 対象はSlackから現在取得できるスタンプです。[reactions.get](https://docs.slack.dev/reference/methods/reactions.get/)に `full: true` を指定し、
 返されたユーザー数がスタンプ人数に足りない場合は、重複人数を推測せずエラーにします。
@@ -220,3 +220,19 @@ WebとSlackの合計人数を使い、同じ日報の同じ節目はDBに一度�
 送信時の名前・Slack ID・本文を保存するため、後の日報編集や表示名変更で送信記録は変わりません。
 この変更以前の通知には本文と送信時の宛先の記録がないため、本文未保存と明示し、参考として現在の日報投稿者を表示します。
 履歴の閲覧はAdmin限定です。既存の通知記録と同じく、日報を削除するとその通知履歴も削除されます。
+
+
+## コメントのスタンプを日報のいいねへ合算する変更
+
+本番反映前に `supabase/migrations/202610160001_comment_reaction_likes.sql` を適用してください。
+SlackイベントのメッセージIDから返信先を取得して、対応する日報のいいねへ合算します。
+集計値・いいねしたメンバー・ランキング・節目通知は、共通の `report_likes` を使います。
+
+過去分は管理画面の「過去のスタンプを取り込む」で再取り込みできます。以前に親投稿だけを
+取り込み済みの日報も対象です。返信を5件ずつ取得し、ページの進捗を保存するため再開できます。
+新しい追加・削除イベントは過去分より優先し、人数が取得しきれない場合は推測せず停止します。
+返信先の取得に失敗したイベントは5分後以降に再試行し、日報が後から取り込まれた場合も集計します。
+日報が存在する間は、スタンプの最新状態と解除記録を定期削除せず保持します。
+
+Slack仕様: [reactions.get](https://docs.slack.dev/reference/methods/reactions.get/) /
+[conversations.replies](https://docs.slack.dev/reference/methods/conversations.replies/)

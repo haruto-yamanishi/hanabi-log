@@ -314,7 +314,7 @@ export function AdminScreen() {
               <div className="integration-connection-card">
                 <div className="integration-connection-card__copy">
                   <strong>Slackの過去スタンプ</strong>
-                  <p>Webの日報に紐づく投稿から取り込みます。同じ人は1件として集計します。</p>
+                  <p>Webの日報に紐づく投稿とコメントから取り込みます。日報全体で同じ人は1件として集計します。</p>
                   <small>いいねの節目を超えた日報は、投稿者にDMで通知します。</small>
                 </div>
                 <button className="button button--secondary button--small" disabled={importingReactions} onClick={() => void importReactions()} type="button">
