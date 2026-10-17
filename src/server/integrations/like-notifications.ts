@@ -1,4 +1,5 @@
 import "server-only";
+import { sendSystemDm } from "@/server/integrations/system-dm";
 import { WebClient } from "@slack/web-api";
 import { after } from "next/server";
 import { getDatabase } from "@/server/db/client";
@@ -46,10 +47,11 @@ export async function processLikeNotifications(): Promise<void> {
         recipient_name = ${claimed.recipientName}, message_text = ${text}, delivery_threshold = ${claimed.threshold}
         where report_id = ${claimed.id} and threshold <= ${claimed.threshold} and sent_at is null`;
       // Store exactly the text sent to Slack, rather than reconstructing it later.
-      const message = await client.chat.postMessage({
-        channel: claimed.slackUserId,
-        text,
-        unfurl_links: false, unfurl_media: false,
+      const message = await sendSystemDm(client, {
+        dedupeKey: `like:${claimed.id}:${claimed.threshold}`,
+        kind: "like", recipientSlackUserId: claimed.slackUserId,
+        recipientName: claimed.recipientName, text,
+        reportId: claimed.id, reportTitle: claimed.title,
       });
       await sql`update report_like_notifications set sent_at = now(), last_error = null,
         slack_channel_id = ${message.channel ?? null}, slack_message_ts = ${message.ts ?? null}

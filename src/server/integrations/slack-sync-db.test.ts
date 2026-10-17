@@ -23,6 +23,9 @@ vi.mock("@slack/web-api", () => ({ WebClient: class {
 
 import { POST } from "@/app/api/integrations/slack/events/route";
 import { importPastSlackReactions } from "./slack-reaction-backfill";
+import { sendSystemDm } from "./system-dm";
+import { listSystemDmHistory } from "./system-dm-history";
+import { WebClient } from "@slack/web-api";
 import { listLikeNotificationHistory } from "./like-notification-history";
 import { cleanupOperationalData } from "@/server/maintenance/retention";
 import { processLikeNotifications } from "./like-notifications";
@@ -35,11 +38,15 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     if (!url || new URL(url).hostname !== "127.0.0.1") throw new Error("Use a local test database");
     sql = postgres(url, { max: 1 });
     state.sql = sql;
+    await sql`do $$ begin
+      if not exists (select from pg_roles where rolname = 'anon') then create role anon; end if;
+      if not exists (select from pg_roles where rolname = 'authenticated') then create role authenticated; end if;
+    end $$`;
     // The dedicated test database must be empty.
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -306,4 +313,31 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
       message: { ...message, text: "削除後の編集", edited: { ts: "1788735900.000001" } } });
     expect(await sql`select * from reports`).toHaveLength(0);
   });
+  it("unifies historical and new DMs, preserves snapshots, and deduplicates sends", async () => {
+    const [member] = await sql`select id from members where slack_user_id = 'U_AUTHOR'`;
+    await sql`insert into audit_events (action, target_type, target_id, metadata_json)
+      values ('contribution_nudge.delivered', 'member', ${member.id}, ${sql.json({ episode_key: "old", recipient_slack_user_id: "U_AUTHOR" })})`;
+    let history = await listSystemDmHistory();
+    expect(history.filter(item => item.kind === "like").every(item => !item.id.startsWith("legacy-like:"))).toBe(true);
+    expect(history.find(item => item.kind === "contribution_nudge")).toMatchObject({ status: "sent", messageText: null });
+    const client = new WebClient("test");
+    const input = { dedupeKey: "announcement:test", kind: "announcement" as const,
+      recipientSlackUserId: "U_AUTHOR", recipientName: "送信時の名前", text: "確定した本文" };
+    const before = state.postMessage.mock.calls.length;
+    await sendSystemDm(client, input);
+    await sendSystemDm(client, { ...input, text: "変わった本文" });
+    expect(state.postMessage.mock.calls.length).toBe(before + 1);
+    history = await listSystemDmHistory();
+    expect(history.find(item => item.kind === "announcement")).toMatchObject({
+      recipientName: "送信時の名前", messageText: "確定した本文", status: "sent", reportId: null,
+    });
+    await sendSystemDm(client, { ...input, dedupeKey: `nudge:${member.id}:old`, kind: "contribution_nudge" });
+    history = await listSystemDmHistory();
+    expect(history.filter(item => item.kind === "contribution_nudge")).toHaveLength(1);
+    await sql`insert into system_dm_deliveries (dedupe_key, kind, recipient_slack_user_id, recipient_name, message_text, status, attempted_at)
+      values ('ambiguous', 'announcement', 'U_AUTHOR', 'Name', 'Text', 'processing', now() - interval '6 minutes')`;
+    await expect(sendSystemDm(client, { ...input, dedupeKey: "ambiguous" })).rejects.toThrow("DM_DELIVERY_IN_PROGRESS_OR_UNKNOWN");
+    expect((await listSystemDmHistory()).find(item => item.messageText === "Text")?.status).toBe("unknown");
+  });
+
 });
