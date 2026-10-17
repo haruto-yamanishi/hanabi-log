@@ -24,7 +24,7 @@ describe("Content Security Policy", () => {
   it("allows Google profile images without broadening other resource sources", () => {
     const directives = createCspHeader("abc123", false).split("; ");
     expect(directives.find(value => value.startsWith("img-src "))).toContain("https://lh3.googleusercontent.com");
-    expect(directives.filter(value => value.includes("googleusercontent.com"))).toHaveLength(1);
+    expect(directives.flatMap(value => value.split(" ")).filter(value => value === "https://lh3.googleusercontent.com")).toHaveLength(1);
   });
 
   it("allows React development eval only in development", () => {
