@@ -54,19 +54,28 @@ export async function importPastSlackReactions() {
           from integration_bindings where report_id = ${binding.report_id} for update`;
         if (!current || current.slack_thread_reactions_imported_at ||
           current.slack_thread_reactions_cursor !== binding.slack_thread_reactions_cursor) return;
-        for (const message of messages) {
-          for (const reaction of message.reactions) {
-            if (!reaction.name) continue;
-            for (const user of reaction.users ?? []) {
-              // Live add/remove events always win, even if delivered during backfill.
-              await tx`insert into slack_report_reactions (channel_id, message_ts, slack_thread_ts, user_id, reaction, active, event_ts)
-                values (${binding.slack_channel_id}, ${message.ts}, ${binding.slack_message_ts}, ${user}, ${reaction.name}, true, 0)
-                on conflict do nothing`;
-            }
-          }
-          // Supply thread mapping to existing event tombstones without changing their state.
+        const rows = messages.flatMap(message => message.reactions.flatMap(reaction =>
+          reaction.name ? (reaction.users ?? []).map(user => ({
+            channel_id: binding.slack_channel_id as string,
+            message_ts: message.ts,
+            slack_thread_ts: binding.slack_message_ts as string,
+            user_id: user,
+            reaction: reaction.name!,
+            active: true,
+            event_ts: 0,
+          })) : [],
+        ));
+        // One database round trip per page, even for heavily reacted-to messages.
+        // Live add/remove events always win over these historical snapshots.
+        if (rows.length) {
+          await tx`insert into slack_report_reactions ${tx(rows,
+            "channel_id", "message_ts", "slack_thread_ts", "user_id", "reaction", "active", "event_ts")}
+            on conflict do nothing`;
+        }
+        if (messages.length) {
           await tx`update slack_report_reactions set slack_thread_ts = ${binding.slack_message_ts}
-            where channel_id = ${binding.slack_channel_id} and message_ts = ${message.ts} and slack_thread_ts is null`;
+            where channel_id = ${binding.slack_channel_id} and message_ts in ${tx(messages.map(message => message.ts))}
+              and slack_thread_ts is null`;
         }
         await tx`update integration_bindings set
           slack_thread_reactions_cursor = ${cursor},
