@@ -128,12 +128,12 @@ export async function processIncomingSlackReports(): Promise<void> {
 async function processSlackReactions(client: WebClient, retryEnabled: boolean): Promise<void> {
   const sql = getDatabase();
   const pending = retryEnabled
-    ? await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
+    ? await sql`select distinct reaction.channel_id, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
         from slack_report_reactions reaction
         join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
         where reaction.processed_at is null and reaction.dead_at is null and reaction.available_at <= now()
         limit 20`
-    : await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
+    : await sql`select distinct reaction.channel_id, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
         from slack_report_reactions reaction
         join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
         where reaction.processed_at is null limit 20`;
@@ -145,11 +145,11 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
       if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
         if (retryEnabled) {
           await sql`update slack_report_reactions set dead_at = now(), last_error = 'slack_user_unavailable'
-            where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+            where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
               and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
         } else {
           await sql`update slack_report_reactions set processed_at = now()
-            where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}`;
+            where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts} and user_id = ${reaction.user_id}`;
         }
         continue;
       }
@@ -159,7 +159,7 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
         if (!report.length) {
           if (retryEnabled) {
             await tx`update slack_report_reactions set dead_at = now(), last_error = 'report_missing'
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+              where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
                 and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
           }
           return;
@@ -186,15 +186,18 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
           await tx`update report_likes set slack_liked = false where report_id = ${reaction.report_id} and member_id = ${member.id}`;
           await tx`delete from report_likes where report_id = ${reaction.report_id} and member_id = ${member.id} and not web_liked`;
         }
-        for (const state of states) {
+        // Only acknowledge the exact rows locked above; a new emoji inserted
+        // concurrently must remain pending for the next aggregation.
+        if (states.length) {
+          const keys = states.map(state => [state.message_ts, state.reaction]);
           if (retryEnabled) {
             await tx`update slack_report_reactions set processed_at = now(), last_error = null
-              where channel_id = ${reaction.channel_id} and message_ts = ${state.message_ts}
-                and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
+              where channel_id = ${reaction.channel_id} and user_id = ${reaction.user_id}
+                and (message_ts, reaction) in (values ${tx(keys)})`;
           } else {
             await tx`update slack_report_reactions set processed_at = now()
-              where channel_id = ${reaction.channel_id} and message_ts = ${state.message_ts}
-                and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
+              where channel_id = ${reaction.channel_id} and user_id = ${reaction.user_id}
+                and (message_ts, reaction) in (values ${tx(keys)})`;
           }
         }
       });
@@ -212,11 +215,11 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
               else now() + interval '5 minutes'
             end,
             last_error = case when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then 'retry_exhausted' else 'sync_failed' end
-          where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+          where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
             and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
-        console.error("Slack reaction sync failed; scheduled retry", { channel: reaction.channel_id, ts: reaction.message_ts });
+        console.error("Slack reaction sync failed; scheduled retry", { channel: reaction.channel_id, ts: reaction.parent_ts });
       } else {
-        console.error("Slack reaction sync failed; retained for retry", { channel: reaction.channel_id, ts: reaction.message_ts });
+        console.error("Slack reaction sync failed; retained for retry", { channel: reaction.channel_id, ts: reaction.parent_ts });
       }
     }
   }
