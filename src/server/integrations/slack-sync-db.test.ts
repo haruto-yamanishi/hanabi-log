@@ -39,7 +39,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -272,6 +272,18 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
         and message_ts = ${row.message_ts} and user_id = ${row.user_id} and reaction = ${row.reaction}`;
       expect(retained).toMatchObject({ active: row.active });
     }
+  });
+
+  it("records missing threads separately and continues importing available reports", async () => {
+    const [report] = await sql`select id from reports`;
+    state.replies.mockRejectedValueOnce({ data: { error: "ratelimited" } });
+    await expect(importPastSlackReactions()).rejects.toMatchObject({ data: { error: "ratelimited" } });
+    state.replies.mockRejectedValueOnce({ data: { error: "thread_not_found" } });
+    expect(await importPastSlackReactions()).toMatchObject({ remaining: 0, unavailable: 1 });
+    const [binding] = await sql`select * from integration_bindings where report_id = ${report.id}`;
+    expect(binding.slack_thread_reactions_imported_at).toBeNull();
+    expect(binding.slack_thread_reactions_error).toBe("thread_not_found");
+    expect(await importPastSlackReactions()).toMatchObject({ imported: false, unavailable: 1 });
   });
 
   it("retains failed thread lookups for retry without blocking later comments", async () => {

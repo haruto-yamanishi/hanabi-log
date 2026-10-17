@@ -142,14 +142,14 @@ export function AdminScreen() {
       let pending = 0;
       let previousPending: number | null = null;
       while (remaining > 0 || pending > 0) {
-        const result = await apiRequest<{ remaining: number; pending: number }>("/api/integrations/slack/reactions/import", { method: "POST" });
+        const result = await apiRequest<{ remaining: number; pending: number; unavailable?: number }>("/api/integrations/slack/reactions/import", { method: "POST" });
         remaining = result.remaining;
         pending = result.pending;
         if (remaining === 0 && pending > 0 && previousPending === pending) {
           throw new Error("一部の集計が完了していません。Slack権限とログを確認し、再度取り込んでください。");
         }
         previousPending = remaining === 0 ? pending : null;
-        setNotice(remaining > 0 ? `過去のスタンプを取り込み中（残り${remaining}投稿）` : pending > 0 ? `いいねを集計中（残り${pending}件）` : "過去のスタンプの取り込みが完了しました。");
+        setNotice(remaining > 0 ? `過去のスタンプを取り込み中（残り${remaining}投稿）` : pending > 0 ? `いいねを集計中（残り${pending}件）` : result.unavailable ? `取得できるスタンプの取り込みが完了しました。Slackで見つからないスレッド${result.unavailable}件は除外しています。` : "過去のスタンプの取り込みが完了しました。");
         if (remaining > 0 || pending > 0) await new Promise(resolve => setTimeout(resolve, 1500));
       }
     } catch (cause) {

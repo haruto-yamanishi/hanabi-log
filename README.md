@@ -236,3 +236,8 @@ SlackイベントのメッセージIDから返信先を取得して、対応す�
 
 Slack仕様: [reactions.get](https://docs.slack.dev/reference/methods/reactions.get/) /
 [conversations.replies](https://docs.slack.dev/reference/methods/conversations.replies/)
+
+追加で `202610170001_unavailable_reaction_threads.sql` を適用すると、Slackが
+`thread_not_found` / `message_not_found` を返すスレッドを失敗として記録して、
+残りの取り込みを続行します。管理画面に除外件数を表示し、取り込み済みとは区別します。
+権限不足・レート制限・通信障害は除外せず、従来どおり再試行できます。
