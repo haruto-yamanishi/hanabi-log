@@ -76,10 +76,17 @@ export async function cleanupOperationalData(
 
   const processedSlackReactions = await sql`delete from slack_report_reactions
     where ctid in (
-      select ctid from slack_report_reactions
-      where processed_at is not null
-        and to_timestamp(event_ts::double precision) < now() - interval '180 days'
-      order by event_ts
+      select reaction.ctid from slack_report_reactions reaction
+      where reaction.processed_at is not null
+        and to_timestamp(reaction.event_ts::double precision) < now() - interval '180 days'
+        -- These rows are current per-message state, not disposable event logs.
+        -- Keep active states and removal tombstones while their report exists.
+        and not exists (
+          select 1 from integration_bindings binding
+          where binding.slack_channel_id = reaction.channel_id
+            and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
+        )
+      order by reaction.event_ts
       limit ${limit}
     ) returning 1`;
 

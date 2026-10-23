@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser, Member, Report } from "@/lib/types";
 
+vi.mock("@/server/integrations/comment-likes", () => ({ rememberComments: vi.fn(), withCommentLikes: async (_id: string, comments: unknown[]) => comments }));
+
 vi.mock("server-only", () => ({}));
 
 const mocks = vi.hoisted(() => ({

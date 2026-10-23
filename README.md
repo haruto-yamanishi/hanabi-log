@@ -63,6 +63,26 @@ DatabaseとStorageは別々に、1日1回以上バックアップします。
 - **Storage:** DatabaseバックアップにはStorageオブジェクト本体が含まれないため、Private bucket `hanabi-log-private` の全オブジェクトを[`supabase storage` またはS3互換クライアント](https://supabase.com/docs/guides/storage/management/download-objects)で日次コピーし、Databaseとは別のPrivateな退避先へ保存します。
 - バックアップの保存期間、実行担当、失敗通知を決め、少なくとも月1回はDatabaseとStorageの両方を同じ時点へ復元できることを検証します。dump、画像、資格情報はGitへ追加しないでください。
 
+## 登録済みメンター用Google認証
+
+Slackのゲストなど、Slack認証を利用できないメンター向けにGoogle認証を追加できます。
+許可するメールアドレスはサーバー側の環境変数で管理します。管理画面での登録には対応していません。
+
+1. Google CloudでOAuthクライアント（ウェブアプリケーション）を作成し、承認済みリダイレクトURIに `${APP_BASE_URL}/api/auth/callback/google` を登録します。
+2. OAuth同意画面を設定します。外部向けでテスト中の場合は、対象メンターをテストユーザーにも登録します。
+3. `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を設定します。
+4. `GOOGLE_MENTOR_ACCOUNTS` にメールアドレスと対象ワークスペースの実際のSlackメンバーIDのJSONを設定します。例: `{"mentor@example.com":"U0123456789"}`。SlackのプロフィールからメンバーIDをコピーし、本人のIDであることを確認してください。
+5. 再デプロイするとログイン画面にGoogleボタンが表示されます。
+
+Googleが確認済みとしたメールだけを完全一致で許可します（前後の空白・大文字小文字は正規化）。
+Gmailのドットや `+alias`、ドメイン単位の許可は展開しません。不正な設定や未登録メールは拒否します。
+メールアドレスを削除または紐づけ先を変更して再デプロイすると、既存Googleセッションも次のサーバー側認証確認で無効になります。
+既存のSlackメンバーと同じ投稿・権限・Active状態を使用し、新規登録時は通常メンバーになります。
+Googleログイン時に表示名・メール・アバターはGoogleの情報へ更新されます。
+Google認証はSlack自体のチャンネル閲覧権限を変更しません。
+
+仕様参考: [NextAuth Google provider](https://next-auth.js.org/providers/google)
+
 ## Slackセットアップ
 
 Slack Appで、ログイン用OIDCとBot配信を分けて設定します。
@@ -163,9 +183,9 @@ Event Subscriptionsのbot eventsへ `reaction_added` と `reaction_removed` を�
 イベントと権限は[Slack公式のreaction_added仕様](https://docs.slack.dev/reference/events/reaction_added/)に従います。
 
 - Slackから取り込んだ投稿の本文編集は、同じWeb日報の本文・要約へ反映し、Notionも更新します。日付・分類・承認状態は維持し、活動実績は増やしません。
-- 日報に紐づいたSlackの親投稿へのスタンプは、種類を問わずいいねとして数えます。WebからSlackへ配信した日報も対象です。
+- 日報に紐づいたSlackの親投稿とコメント（スレッド返信）へのスタンプは、種類を問わずいいねとして数えます。WebからSlackへ配信した日報も対象です。
 - 同じ人の複数スタンプとWebのいいねは合計1件。スタンプをすべて外してもWebのいいねが残れば1件を維持し、逆も同様です。
-- WebのボタンはWeb側のいいねを操作し、人数とメンバー一覧はSlackとの合計を表示します。
+- WebのボタンはWeb側のいいねを操作し、人数とメンバー一覧はSlackとの合計を表示します。同じ人が親投稿・複数コメント・Webで押しても、日報全体で1人1件です。一部を解除しても別の場所にいいねが残っていれば維持します。
 - 過去のスタンプは、管理画面の「同期管理」から一括取り込みできます。通常は追加・削除イベントで反映します。
 
 必要な場合のローカルDB検証（空のローカルPostgreSQLテストDBを指定。本番の `DATABASE_URL` は使いません）:
@@ -178,9 +198,9 @@ SLACK_SYNC_TEST_DATABASE_URL=postgres://USER@127.0.0.1:PORT/EMPTY_TEST_DB npm ru
 ### 過去スタンプの取り込み・いいねのDM通知
 
 `supabase/migrations/202609070002_like_notifications.sql` を適用してデプロイします。
-追加の環境変数やSlack権限は不要です。既存の `reactions:read`・`users:read`・`chat:write` を使用します。
+追加の環境変数は不要です。既存の `reactions:read`・`users:read`・`chat:write` と、コメント表示で使う履歴閲覧権限（`channels:history` / `groups:history`）を使用します。
 
-管理画面 → 同期管理 → **過去のスタンプを取り込む** を押すと、Web日報に紐づいたSlackの親投稿を順番に取り込みます。
+管理画面 → 同期管理 → **過去のスタンプを取り込む** を押すと、Web日報に紐づいたSlackの親投稿とスレッド返信を順番に取り込みます。
 画面を閉じたりエラーで止まった場合も、再度押すと未取得分から再開します。Slackイベントで受信済みの追加・削除を優先し、Webいいねは維持します。
 対象はSlackから現在取得できるスタンプです。[reactions.get](https://docs.slack.dev/reference/methods/reactions.get/)に `full: true` を指定し、
 返されたユーザー数がスタンプ人数に足りない場合は、重複人数を推測せずエラーにします。
@@ -194,9 +214,117 @@ WebとSlackの合計人数を使い、同じ日報の同じ節目はDBに一度�
 
 ### 管理画面でDM通知履歴を確認する
 
-`supabase/migrations/202609070003_like_notification_history.sql` を適用してデプロイすると、
-管理画面 → 同期管理 → **いいねのDM通知履歴** で、宛先・送信本文・送信日時・送信状態・エラーを最新100件まで確認できます。
-「履歴を更新」で最新状態を取得します。複数の節目をまとめて送ったDMは1件で表示します。
-送信時の名前・Slack ID・本文を保存するため、後の日報編集や表示名変更で送信記録は変わりません。
-この変更以前の通知には本文と送信時の宛先の記録がないため、本文未保存と明示し、参考として現在の日報投稿者を表示します。
-履歴の閲覧はAdmin限定です。既存の通知記録と同じく、日報を削除するとその通知履歴も削除されます。
+`supabase/migrations/202610170002_system_dm_deliveries.sql` を適用してデプロイすると、
+管理画面 → 同期管理 → **システムのDM送信履歴** で、いいね通知・活動リマインド・お知らせをまとめて最新100件まで確認できます。
+宛先・種類・本文・送信日時・状態・エラーを表示します。「履歴を更新」で最新状態を取得します。
+新しいDMは共通の `sendSystemDm` を通し、送信前に宛先と本文を保存します。送信成功済みの同じキーは再送しません。
+送信後の保存に失敗した記録は自動で再送せず「送信結果の確認が必要」と表示します。
+既存のいいね通知と活動リマインドの監査記録も統合します。過去に保存していない本文は未保存と明示します。
+履歴はAdmin限定です。新しい共通履歴は日報削除後も保存されます（旧いいね履歴は従来どおり日報とともに削除）。
+
+
+## コメントのスタンプを日報のいいねへ合算する変更
+
+本番反映前に `supabase/migrations/202610160001_comment_reaction_likes.sql` を適用してください。
+SlackイベントのメッセージIDから返信先を取得して、対応する日報のいいねへ合算します。
+集計値・いいねしたメンバー・ランキング・節目通知は、共通の `report_likes` を使います。
+
+過去分は管理画面の「過去のスタンプを取り込む」で再取り込みできます。以前に親投稿だけを
+取り込み済みの日報も対象です。返信を5件ずつ取得し、ページの進捗を保存するため再開できます。
+新しい追加・削除イベントは過去分より優先し、人数が取得しきれない場合は推測せず停止します。
+返信先の取得に失敗したイベントは5分後以降に再試行し、日報が後から取り込まれた場合も集計します。
+日報が存在する間は、スタンプの最新状態と解除記録を定期削除せず保持します。
+
+Slack仕様: [reactions.get](https://docs.slack.dev/reference/methods/reactions.get/) /
+[conversations.replies](https://docs.slack.dev/reference/methods/conversations.replies/)
+
+追加で `202610170001_unavailable_reaction_threads.sql` を適用すると、Slackが
+`thread_not_found` / `message_not_found` を返すスレッドを失敗として記録して、
+残りの取り込みを続行します。管理画面に除外件数を表示し、取り込み済みとは区別します。
+権限不足・レート制限・通信障害は除外せず、従来どおり再試行できます。
+
+### Slack画像・動画と過去日報の修復（2026-10）
+
+`202610230001_report_media_and_categories.sql` と `202610230002_mov_storage.sql` を適用します。Slack Botに
+`files:read` を追加してワークスペースへ再インストールしてください。
+Web動画はMP4 / WebM / MOV（47MiBまで）に対応しています。
+Slack返信の添付は、コメント取得時に非公開Storageへ保存して表示します。
+取得できなかった添付は本文を隠さず未取得と表示します。
+
+Slackカードの画像は、公開中の添付に限定した専用URLを使用します。
+画像を削除したり日報をアーカイブするとアクセスを拒否します。
+URLは画像へのアクセス権を含むため、ログや公開資料へ転載しないでください。
+再投稿時は既存Slackカードを照合し、投稿IDを本文スレッド・Notion同期より先に保存します。
+
+過去の直接投稿・添付・返信・スタンプを再開可能な形で移行できます。
+まず `--apply` なしで対象件数を確認してください。実行時はデモ設定を必ず無効化します。
+移行は日報チャンネルのユーザーの親投稿を対象とし、Bot投稿・システム通知・返信を日報として重複登録しません。
+
+```bash
+DEMO_MODE=false node --env-file=.env.local --conditions=react-server --import tsx scripts/slack-repair.ts
+DEMO_MODE=false node --env-file=.env.local --conditions=react-server --import tsx scripts/slack-repair.ts --apply
+```
+
+`--repair-messages` を追加すると既存のWeb由来Slackカードの画像URLも更新します。
+50MBを超える過去動画は `scripts/slack-compress-history.ts` でWeb用コピーを圧縮できます
+（ffmpeg / ffprobeが必要、Slackの元動画は維持）。その後もう一度取り込みを実行してください。
+`slack_incoming_reports.media_error` に添付の未取得理由を保存します。
+
+### コメントいいねと下書きプレビュー
+
+`202610230003_comment_likes.sql` を適用します。Webコメントのいいねは独立した状態として保存し、
+Slackの複数スタンプ・WebとSlackの重複をコメントごとに1人1件へまとめます。
+日報には同じ人から最大1件、コメント投稿者のランキングには各コメントで受けた件数を加算します。
+日報投稿者とコメント投稿者が同じ場合は同じ人に二重加算しません。
+一方のサービスで解除しても、他方のいいねは残ります。
+過去コメントの投稿者情報も `slack-repair.ts --apply --comments-only` で取り込めます。
+
+下書き編集では、追加した画像と動画をその場でプレビューできます。動画は再生・シーク可能です。
+保存した下書きを開き直した場合も、非公開Storageからプレビューを取得します。
+
+### 本文メンション・並び順・利用状況（2026-10-23）
+
+本文の各入力欄で `@` を入力するとSlackメンバー候補が開きます。表示名・本名・ユーザー名を
+NFKC、大小文字、空白、かなを正規化して検索します。保存値はSlack ID付きのトークン、
+編集時の表示は `@名前` です。名前そのものを編集した場合は通知対象から外します。
+アーカイブの `sort` は `newest`（既定）・`oldest`・`popular`。人気順は日報のいいね人数で、
+同数の場合は公開日時・IDの降順です。カーソルには並び順といいね数も保持します。
+
+`202610230004_usage_analytics.sql` を適用してから新バージョンをデプロイします。
+管理者専用 `/api/admin/analytics` から、登録日時、最終アクセス、オンラインの目安、
+日報別PV・閲覧者数を確認できます。オンラインは表示中のタブが60秒ごとに送る通信が
+直近2分以内にあった状態です。タブを隠したり閉じた場合は2分以内にオフラインになります。
+IPアドレスや閲覧パスは保存しません。閲覧は日報ID・メンバーID・訪問ID・日時を保持します。
+詳細画面の表示後に計測し、同じ訪問IDの再送は重複加算しません。再読み込みや投稿者自身の閲覧は
+PVに含め、同じ人の閲覧者数は1人とします。下書き・承認待ちは計測しません。
+計測開始日時はDBに保存し、開始前のPVを推測で補完しません。
+
+`/updates` にパッチノートとクレジットを掲載しています。
+
+### Slack内の動画再生
+
+`202610230005_slack_video_uploads.sql` を適用し、Slackアプリの **Bot Token Scopes** に
+`files:write` を追加して再インストールします。**User Token Scopes** の `openid` / `profile` /
+`email` と `files:write` を混在させないでください（ログイン用とBot用は別の認証フローです）。
+
+Web日報の動画は、親投稿のスレッドへSlackネイティブのファイルとして配信します。
+getUploadURLExternal → バイナリアップロード → completeUploadExternal を使い、ファイルIDを
+共有前にDBへ保存します。完了応答が失われても同じIDの共有状態を照合し、再アップロードしません。
+動画の削除・日報のアーカイブ時は、この連携が作ったSlackファイルだけを削除します。
+Slackから取り込んだ元投稿・元動画は変更しません。配信された動画をWebコメントとして再取り込みしません。
+Slackの動画処理が終わるまで、プレーヤーが表示されるまで時間がかかる場合があります。
+
+過去のWeb日報の動画を配信するには、まずdry-runで対象を確認し、`--apply` を追加します。
+
+```bash
+DEMO_MODE=false APP_BASE_URL=https://log.9494hanabi.com node --env-file=.env.local --conditions=react-server --import tsx scripts/slack-sync-videos.ts
+```
+
+本文メンションはSlackユーザーグループにも対応しています。Slackアプリの **Bot Token Scopes** に
+`usergroups:read` を追加し、再インストールします。候補にはグループ名・ハンドル・人数を表示し、
+`@[名前](slack:S...)` として保存して、Slack投稿時に `<!subteam^S...>` へ変換します。
+個人メンションは従来どおり利用でき、グループの権限不足は候補内に表示します。
+コメント欄は表示中に30秒ごとに更新します。動画再生中・コメント送信中は自動更新を待ちます。
+
+過去のパッチノートはコミット日付から復元しました。掲載内容と根拠のコミットは
+[docs/release-history.md](docs/release-history.md) に記録しています。

@@ -23,9 +23,10 @@ export async function POST(request: Request): Promise<Response> {
     const retryEnabled = slackIngestionRetryEnabled();
     if (message) {
       if (retryEnabled) {
-        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts)
-          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs})
+        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts, file_ids)
+          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs}, ${sql.json((message.files ?? []).filter(file => /^(image|video)\//.test(file.mimetype ?? "")).map(file => file.id))})
           on conflict (channel_id, message_ts) do update set
+            file_ids = excluded.file_ids, media_imported_at = null,
             body = excluded.body,
             event_ts = excluded.event_ts,
             processed_at = null,
@@ -36,9 +37,10 @@ export async function POST(request: Request): Promise<Response> {
           where slack_incoming_reports.event_ts < excluded.event_ts
             and slack_incoming_reports.user_id = excluded.user_id`;
       } else {
-        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts)
-          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs})
+        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts, file_ids)
+          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs}, ${sql.json((message.files ?? []).filter(file => /^(image|video)\//.test(file.mimetype ?? "")).map(file => file.id))})
           on conflict (channel_id, message_ts) do update set
+            file_ids = excluded.file_ids, media_imported_at = null,
             body = excluded.body, event_ts = excluded.event_ts, processed_at = null
           where slack_incoming_reports.event_ts < excluded.event_ts
             and slack_incoming_reports.user_id = excluded.user_id`;

@@ -1,5 +1,5 @@
 export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-export const VIDEO_MIME_TYPES = ["video/mp4", "video/webm"] as const;
+export const VIDEO_MIME_TYPES = ["video/mp4", "video/webm", "video/quicktime"] as const;
 export const MEDIA_MIME_TYPES = [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES] as const;
 
 export type ImageMimeType = (typeof IMAGE_MIME_TYPES)[number];

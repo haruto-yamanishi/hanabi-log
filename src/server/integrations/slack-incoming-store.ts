@@ -6,13 +6,15 @@ import { resolveReportTitle } from "@/lib/report-title";
 import { toHanabiReportDate } from "@/lib/timezone";
 import { slackIngestionRetryEnabled } from "@/server/integrations/slack-incoming-retry-mode";
 
+import { resolveSlackReactionThreads } from "@/server/integrations/slack-reaction-threads";
+
 const MAX_INGESTION_ATTEMPTS = 5;
 
 export async function processIncomingSlackReports(): Promise<void> {
   if (isDemoMode || !env.SLACK_TEAM_ID || !env.SLACK_BOT_TOKEN) return;
   const sql = getDatabase();
   const retryEnabled = slackIngestionRetryEnabled();
-  const client = new WebClient(env.SLACK_BOT_TOKEN, { retryConfig: { retries: 0 }, timeout: 5000 });
+  const client = new WebClient(env.SLACK_BOT_TOKEN, { retryConfig: { retries: 0 }, rejectRateLimitedCalls: true, timeout: 5000 });
   const pending = retryEnabled
     ? await sql`select * from slack_incoming_reports
         where processed_at is null and dead_at is null and available_at <= now()
@@ -23,7 +25,7 @@ export async function processIncomingSlackReports(): Promise<void> {
     try {
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID} and slack_user_id = ${candidate.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: candidate.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+      if (!existing.length && (!profile || profile.is_bot || (profile.deleted && !candidate.historical))) {
         if (retryEnabled) {
           await sql`update slack_incoming_reports set dead_at = now(), last_error = 'slack_user_unavailable'
             where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts}
@@ -70,12 +72,12 @@ export async function processIncomingSlackReports(): Promise<void> {
 
         const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(candidate.user_id);
         if (!existing.length) {
-          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role)
-            values (${env.SLACK_TEAM_ID!}, ${candidate.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || candidate.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"})
+          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role, is_active)
+            values (${env.SLACK_TEAM_ID!}, ${candidate.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || candidate.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"}, ${!profile?.deleted})
             on conflict (slack_team_id, slack_user_id) do nothing`;
         }
         const [member] = await tx`select * from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${candidate.user_id}`;
-        const published = member.is_active || member.role === "admin";
+        const published = message.historical || member.is_active || member.role === "admin";
         const occurredAt = new Date(Number(message.message_ts) * 1000);
         const reportDate = toHanabiReportDate(occurredAt);
         const [report] = await tx`insert into reports (author_id, report_date, title, summary, activity_area, content_category, activity_text, status, published_at)
@@ -119,34 +121,49 @@ export async function processIncomingSlackReports(): Promise<void> {
       }
     }
   }
+  const { importSourceMedia } = await import("@/server/integrations/slack-source-media");
+  await importSourceMedia();
+  await resolveSlackReactionThreads(client);
   await processSlackReactions(client, retryEnabled);
 }
 
 async function processSlackReactions(client: WebClient, retryEnabled: boolean): Promise<void> {
   const sql = getDatabase();
   const pending = retryEnabled
-    ? await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id
+    ? await sql`select distinct reaction.channel_id, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
         from slack_report_reactions reaction
-        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = reaction.message_ts
+        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
         where reaction.processed_at is null and reaction.dead_at is null and reaction.available_at <= now()
         limit 20`
-    : await sql`select distinct reaction.channel_id, reaction.message_ts, reaction.user_id, binding.report_id
+    : await sql`select distinct reaction.channel_id, reaction.user_id, binding.report_id, binding.slack_message_ts as parent_ts
         from slack_report_reactions reaction
-        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = reaction.message_ts
+        join integration_bindings binding on binding.slack_channel_id = reaction.channel_id and binding.slack_message_ts = coalesce(reaction.slack_thread_ts, reaction.message_ts)
         where reaction.processed_at is null limit 20`;
 
   for (const reaction of pending) {
     try {
+      const [missingComment] = await sql`select s.message_ts from slack_report_reactions s
+        where s.channel_id=${reaction.channel_id} and coalesce(s.slack_thread_ts,s.message_ts)=${reaction.parent_ts}
+          and s.message_ts<>${reaction.parent_ts}
+          and not exists(select 1 from report_comments c where c.report_id=${reaction.report_id} and c.message_ts=s.message_ts)
+        limit 1`;
+      if (missingComment) {
+        const [{ createSlackCommentService }, { rememberComments }, { getReportRepository }] = await Promise.all([
+          import("@/server/integrations/slack-comments"), import("@/server/integrations/comment-likes"), import("@/server/repositories"),
+        ]);
+        const comments = await createSlackCommentService(env.SLACK_BOT_TOKEN!).list({ channel: reaction.channel_id, threadTs: reaction.parent_ts, members: await getReportRepository().listMembers() });
+        await rememberComments(reaction.report_id, comments);
+      }
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${reaction.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: reaction.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+      if (!existing.length && (!profile || profile.is_bot)) {
         if (retryEnabled) {
           await sql`update slack_report_reactions set dead_at = now(), last_error = 'slack_user_unavailable'
-            where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+            where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
               and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
         } else {
           await sql`update slack_report_reactions set processed_at = now()
-            where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}`;
+            where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts} and user_id = ${reaction.user_id}`;
         }
         continue;
       }
@@ -156,23 +173,22 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
         if (!report.length) {
           if (retryEnabled) {
             await tx`update slack_report_reactions set dead_at = now(), last_error = 'report_missing'
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+              where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
                 and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
           }
           return;
         }
-        const states = retryEnabled
-          ? await tx`select reaction, active from slack_report_reactions
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}
-                and processed_at is null and dead_at is null
-              order by reaction for update`
-          : await tx`select reaction, active from slack_report_reactions
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts} and user_id = ${reaction.user_id}
-              order by reaction for update`;
+        // Lock every source for this person in the report, including already processed
+        // emojis. Removing one reply's reaction must preserve likes on other replies.
+        const states = await tx`select message_ts, reaction, active from slack_report_reactions
+          where channel_id = ${reaction.channel_id}
+            and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
+            and user_id = ${reaction.user_id}
+          order by message_ts, reaction for update`;
         if (!existing.length) {
           const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(reaction.user_id);
-          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role)
-            values (${env.SLACK_TEAM_ID!}, ${reaction.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || reaction.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"})
+          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role, is_active)
+            values (${env.SLACK_TEAM_ID!}, ${reaction.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || reaction.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"}, ${!profile?.deleted})
             on conflict (slack_team_id, slack_user_id) do nothing`;
         }
         const [member] = await tx`select id from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${reaction.user_id}`;
@@ -182,17 +198,20 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
             on conflict (report_id, member_id) do update set slack_liked = true`;
         } else {
           await tx`update report_likes set slack_liked = false where report_id = ${reaction.report_id} and member_id = ${member.id}`;
-          await tx`delete from report_likes where report_id = ${reaction.report_id} and member_id = ${member.id} and not web_liked`;
+          await tx`delete from report_likes where report_id = ${reaction.report_id} and member_id = ${member.id} and not web_liked and not web_comment_liked`;
         }
-        for (const state of states) {
+        // Only acknowledge the exact rows locked above; a new emoji inserted
+        // concurrently must remain pending for the next aggregation.
+        if (states.length) {
+          const keys = states.map(state => [state.message_ts, state.reaction]);
           if (retryEnabled) {
             await tx`update slack_report_reactions set processed_at = now(), last_error = null
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
-                and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
+              where channel_id = ${reaction.channel_id} and user_id = ${reaction.user_id}
+                and (message_ts, reaction) in (values ${tx(keys)})`;
           } else {
             await tx`update slack_report_reactions set processed_at = now()
-              where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
-                and user_id = ${reaction.user_id} and reaction = ${state.reaction}`;
+              where channel_id = ${reaction.channel_id} and user_id = ${reaction.user_id}
+                and (message_ts, reaction) in (values ${tx(keys)})`;
           }
         }
       });
@@ -210,11 +229,11 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
               else now() + interval '5 minutes'
             end,
             last_error = case when attempts + 1 >= ${MAX_INGESTION_ATTEMPTS} then 'retry_exhausted' else 'sync_failed' end
-          where channel_id = ${reaction.channel_id} and message_ts = ${reaction.message_ts}
+          where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
             and user_id = ${reaction.user_id} and processed_at is null and dead_at is null`;
-        console.error("Slack reaction sync failed; scheduled retry", { channel: reaction.channel_id, ts: reaction.message_ts });
+        console.error("Slack reaction sync failed; scheduled retry", { channel: reaction.channel_id, ts: reaction.parent_ts });
       } else {
-        console.error("Slack reaction sync failed; retained for retry", { channel: reaction.channel_id, ts: reaction.message_ts });
+        console.error("Slack reaction sync failed; retained for retry", { channel: reaction.channel_id, ts: reaction.parent_ts });
       }
     }
   }

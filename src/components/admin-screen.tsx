@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminUsagePanel } from "@/components/admin-usage-panel";
+import type { UsageAnalytics } from "@/lib/analytics";
 import Link from "next/link";
 import { LikeNotificationHistoryPanel } from "@/components/like-notification-history";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
@@ -10,7 +12,7 @@ import { AlertIcon, ArrowRightIcon, CheckIcon, RefreshIcon, SettingsIcon, TrashI
 import { formatDateTime } from "@/components/report-card";
 import { Avatar, EmptyState, ErrorState, LoadingView, PageHeader } from "@/components/ui";
 
-type AdminTab = "approvals" | "sync" | "members" | "categories";
+type AdminTab = "approvals" | "sync" | "members" | "categories" | "usage";
 
 const problemStatuses = new Set(["failed", "dead", "partial"]);
 
@@ -64,6 +66,9 @@ async function loadAllReports(status: ReportStatus, signal?: AbortSignal): Promi
 export function AdminScreen() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [reports, setReports] = useState<ReportListItem[]>([]);
+  const [usage, setUsage] = useState<UsageAnalytics | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [memberSort, setMemberSort] = useState("registered-oldest");
   const [members, setMembers] = useState<PublicMember[]>([]);
   const [notionConnection, setNotionConnection] = useState<NotionConnectionStatus>({ connected: false });
   const [tab, setTab] = useState<AdminTab>("approvals");
@@ -116,6 +121,31 @@ export function AdminScreen() {
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   }, []);
 
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    const controller = new AbortController();
+    async function refresh() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const data = await apiRequest<UsageAnalytics>("/api/admin/analytics", { signal: controller.signal });
+        if (!controller.signal.aborted) { setUsage(data); setUsageError(null); }
+      } catch (cause) {
+        if (!controller.signal.aborted) setUsageError(cause instanceof Error ? cause.message : "利用状況を取得できませんでした");
+      }
+    }
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { controller.abort(); window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+  }, [user?.role]);
+
+  const memberUsage = new Map(usage?.members.map(member => [member.id, member]) ?? []);
+  const sortedMembers = [...members].sort((a, b) => {
+    if (memberSort === "name") return a.displayName.localeCompare(b.displayName, "ja");
+    const order = (memberUsage.get(a.id)?.registeredAt ?? "").localeCompare(memberUsage.get(b.id)?.registeredAt ?? "") || a.id.localeCompare(b.id);
+    return memberSort === "registered-newest" ? -order : order;
+  });
+
   const issues = useMemo<SyncIssue[]>(() => reports.flatMap((report) => {
     if (!report.integration) return [];
     const result: SyncIssue[] = [];
@@ -142,14 +172,14 @@ export function AdminScreen() {
       let pending = 0;
       let previousPending: number | null = null;
       while (remaining > 0 || pending > 0) {
-        const result = await apiRequest<{ remaining: number; pending: number }>("/api/integrations/slack/reactions/import", { method: "POST" });
+        const result = await apiRequest<{ remaining: number; pending: number; unavailable?: number }>("/api/integrations/slack/reactions/import", { method: "POST" });
         remaining = result.remaining;
         pending = result.pending;
         if (remaining === 0 && pending > 0 && previousPending === pending) {
           throw new Error("一部の集計が完了していません。Slack権限とログを確認し、再度取り込んでください。");
         }
         previousPending = remaining === 0 ? pending : null;
-        setNotice(remaining > 0 ? `過去のスタンプを取り込み中（残り${remaining}投稿）` : pending > 0 ? `いいねを集計中（残り${pending}件）` : "過去のスタンプの取り込みが完了しました。");
+        setNotice(remaining > 0 ? `過去のスタンプを取り込み中（残り${remaining}投稿）` : pending > 0 ? `いいねを集計中（残り${pending}件）` : result.unavailable ? `取得できるスタンプの取り込みが完了しました。Slackで見つからないスレッド${result.unavailable}件は除外しています。` : "過去のスタンプの取り込みが完了しました。");
         if (remaining > 0 || pending > 0) await new Promise(resolve => setTimeout(resolve, 1500));
       }
     } catch (cause) {
@@ -282,6 +312,7 @@ export function AdminScreen() {
             <button aria-selected={tab === "approvals"} onClick={() => setTab("approvals")} role="tab" type="button"><CheckIcon />公開承認{pendingApprovals.length ? <span>{pendingApprovals.length}</span> : null}</button>
             <button aria-selected={tab === "sync"} onClick={() => setTab("sync")} role="tab" type="button"><RefreshIcon />同期管理{issues.length ? <span>{issues.length}</span> : null}</button>
             <button aria-selected={tab === "members"} onClick={() => setTab("members")} role="tab" type="button"><UserIcon />メンバー</button>
+            <button aria-selected={tab === "usage"} onClick={() => setTab("usage")} role="tab" type="button"><UserIcon />利用状況</button>
             <button aria-selected={tab === "categories"} onClick={() => setTab("categories")} role="tab" type="button"><SettingsIcon />分類設定</button>
           </div>
 
@@ -314,7 +345,7 @@ export function AdminScreen() {
               <div className="integration-connection-card">
                 <div className="integration-connection-card__copy">
                   <strong>Slackの過去スタンプ</strong>
-                  <p>Webの日報に紐づく投稿から取り込みます。同じ人は1件として集計します。</p>
+                  <p>Webの日報に紐づく投稿とコメントから取り込みます。日報全体で同じ人は1件として集計します。</p>
                   <small>いいねの節目を超えた日報は、投稿者にDMで通知します。</small>
                 </div>
                 <button className="button button--secondary button--small" disabled={importingReactions} onClick={() => void importReactions()} type="button">
@@ -370,14 +401,23 @@ export function AdminScreen() {
             </section>
           ) : null}
 
+          {usageError && (tab === "usage" || tab === "members") ? <p role="alert">{usageError}</p> : null}
+          {tab === "usage" ? <AdminUsagePanel data={usage} /> : null}
+
           {tab === "members" ? (
             <section aria-labelledby="members-heading" className="admin-panel">
-              <div className="admin-panel__heading"><div><h2 id="members-heading">メンバー</h2><p>ログイン済みの全メンバーと現在の権限です。</p></div></div>
+              <div className="admin-panel__heading"><div><h2 id="members-heading">メンバー</h2><p>Slackから取り込んだメンバーも含みます。登録日はこのサイトに記録を作成した日時です。</p></div>
+                <label className="archive-sort">並び順<select aria-label="メンバーの並び順" value={memberSort} onChange={event => setMemberSort(event.target.value)}><option value="registered-oldest">登録順（古い順）</option><option value="registered-newest">登録順（新しい順）</option><option value="name">名前順</option></select></label>
+              </div>
               <div className="member-list">
-                {members.map((member) => (
+                {sortedMembers.map((member) => (
                   <article className="member-row" key={member.id}>
                     <Avatar name={member.displayName} src={member.avatarUrl} />
-                    <div><strong>{member.displayName}</strong><span>{member.id === user?.id ? "ログイン中のアカウント" : member.isActive ? "Activeメンバー" : "Inactiveメンバー・公開承認が必要"}</span></div>
+                    <div><strong>{member.displayName}</strong>
+                      <span className={memberUsage.get(member.id)?.online ? "presence-online" : ""}>{!usage ? "接続状態を確認中…" : memberUsage.get(member.id)?.online ? "● オンライン" : "○ オフライン"}</span>
+                      <span>登録：{memberUsage.get(member.id)?.registeredAt ? formatDateTime(memberUsage.get(member.id)!.registeredAt) : "—"}</span>
+                      <span>最終アクセス：{memberUsage.get(member.id)?.lastSeenAt ? formatDateTime(memberUsage.get(member.id)!.lastSeenAt!) : "計測開始後のアクセスなし"}</span>
+                      <span>{member.id === user?.id ? "ログイン中のアカウント" : member.isActive ? "Activeメンバー" : "Inactiveメンバー・公開承認が必要"}</span></div>
                     <label>
                       <span className="sr-only">{member.displayName}さんの活動状態</span>
                       <select

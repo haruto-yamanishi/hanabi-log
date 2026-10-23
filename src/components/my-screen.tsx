@@ -122,7 +122,7 @@ export function MyScreen() {
           </section>
 
           <footer className="account-footer">
-            <Link className="text-link" href="/api/auth/signout" prefetch={false}>Slackアカウントからログアウト<ArrowRightIcon /></Link>
+            <Link className="text-link" href="/api/auth/signout" prefetch={false}>ログアウト<ArrowRightIcon /></Link>
           </footer>
         </>
       )}

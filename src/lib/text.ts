@@ -29,3 +29,7 @@ export function todayInJst(now = new Date()): string {
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
 }
+
+export function displayMentions(text: string): string {
+  return text.replace(/@\[([^\]\n]+)\]\(slack:[UWS][A-Z0-9]+\)/g, "@$1");
+}
