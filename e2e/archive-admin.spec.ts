@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { openPage } from "./navigation";
 
+// API mocks must reach Playwright instead of the PWA fetch handler (WebKit).
+test.use({ serviceWorkers: "block" });
+
 test("アーカイブの並び順がAPIとURLに反映され、再読み込みで維持される", async ({ page }) => {
   await openPage(page, "/archive");
   const sort = page.getByLabel("並び順", { exact: true });

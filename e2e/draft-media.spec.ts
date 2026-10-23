@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { openPage } from "./navigation";
 
+// API mocks must reach Playwright instead of the PWA fetch handler (WebKit).
+test.use({ serviceWorkers: "block" });
+
 test("下書きで画像と動画をプレビューし、メンションと留学・進路を選べる", async ({ page }) => {
   await page.route("**/api/integrations/slack/mentions", route => route.fulfill({ json: [{ id: "U123ABC", name: "テストメンバー", realName: "山西 遥斗", username: "haruto" }] }));
   await openPage(page, "/reports/new");
