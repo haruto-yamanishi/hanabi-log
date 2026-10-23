@@ -401,7 +401,7 @@ function detectMimeType(bytes: Uint8Array): MediaMimeType | null {
   if (bytesEqual(bytes, 0, [0xff, 0xd8])) return "image/jpeg";
   if (bytesEqual(bytes, 0, PNG_SIGNATURE)) return "image/png";
   if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") return "image/webp";
-  if (ascii(bytes, 4, 4) === "ftyp") return "video/mp4";
+  if (ascii(bytes, 4, 4) === "ftyp") return ascii(bytes, readU32BE(bytes, 0) === 1 ? 16 : 8, 4) === "qt  " ? "video/quicktime" : "video/mp4";
   if (bytesEqual(bytes, 0, [0x1a, 0x45, 0xdf, 0xa3])) return "video/webm";
   return null;
 }
@@ -419,6 +419,7 @@ export function assertMediaNameMatchesMime(
     "image/webp": [".webp"],
     "video/mp4": [".mp4"],
     "video/webm": [".webm"],
+    "video/quicktime": [".mov"],
   };
   const expectedStorageExtension: Record<MediaMimeType, string> = {
     "image/jpeg": ".jpg",
@@ -426,6 +427,7 @@ export function assertMediaNameMatchesMime(
     "image/webp": ".webp",
     "video/mp4": ".mp4",
     "video/webm": ".webm",
+    "video/quicktime": ".mov",
   };
   if (!allowedFilenameExtensions[mimeType].includes(filenameExtension)) {
     invalid("ファイル名の拡張子とMIME typeが一致しません");
@@ -448,7 +450,7 @@ export function validateMediaBytes(bytes: Uint8Array, mimeType: MediaMimeType): 
     return validateWebp(bytes);
   }
   if (isVideoMimeType(mimeType)) {
-    return mimeType === "video/mp4" ? validateMp4(bytes) : validateWebm(bytes);
+    return mimeType === "video/webm" ? validateWebm(bytes) : { ...validateMp4(bytes), mimeType };
   }
   return invalid("対応していないファイル形式です");
 }

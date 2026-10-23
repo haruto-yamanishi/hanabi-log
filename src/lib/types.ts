@@ -147,12 +147,23 @@ export interface ReportLikeSummary {
 }
 
 export interface ReportCommentAuthor {
+  slackUserId?: string;
   id?: string;
   displayName: string;
   avatarUrl?: string | null;
 }
 
+export interface CommentAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  url?: string;
+}
+
 export interface ReportComment {
+  likeCount?: number;
+  likedByCurrentUser?: boolean;
+  attachments?: CommentAttachment[];
   id: string;
   body: string;
   createdAt: string;
@@ -180,7 +191,10 @@ export interface ReportInput {
   attachments?: Attachment[];
 }
 
+export type ReportSort = "newest" | "oldest" | "popular";
+
 export interface ReportFilters {
+  sort?: ReportSort;
   includeIntegration?: boolean;
   q?: string;
   activityArea?: ActivityArea;

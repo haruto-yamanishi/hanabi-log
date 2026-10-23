@@ -427,7 +427,9 @@ export class PostgresReportRepository implements ReportRepository {
     }[]>`
       select members.id::text as member_id,
         (select count(*)::int from reports where author_id = members.id and published_at is not null) as published_reports,
-        (select count(*)::int from report_likes likes join reports on reports.id = likes.report_id where reports.author_id = members.id) as likes_received,
+        ((select count(*)::int from report_likes likes join reports on reports.id = likes.report_id where reports.author_id = members.id)
+          + (select count(*)::int from comment_like_members likes join report_comments c using(report_id,message_ts)
+             join reports r on r.id=c.report_id where c.author_id=members.id and r.author_id<>members.id)) as likes_received,
         (select count(*)::int from member_contribution_events events join reports on reports.id = events.report_id where reports.author_id = members.id and events.kind = 'comment' and events.member_id <> members.id) as comments_received,
         (select count(*)::int from member_contribution_events where member_id = members.id and kind = 'comment') as comments_made
       from members
@@ -505,7 +507,8 @@ export class PostgresReportRepository implements ReportRepository {
 
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {
     const cursor = filters.cursor ? decodeReportCursor(filters.cursor) : null;
-    if (filters.cursor && !cursor) {
+    const sort = filters.sort ?? "newest";
+    if (filters.cursor && (!cursor || cursor.sort !== sort)) {
       throw new AppError("INVALID_CURSOR", "ページ情報が正しくありません", 422);
     }
     const conditions = [
@@ -531,11 +534,18 @@ export class PostgresReportRepository implements ReportRepository {
     if (filters.dateTo) conditions.push(this.sql`r.report_date <= ${filters.dateTo}`);
     if (filters.status) conditions.push(this.sql`r.status = ${filters.status}`);
     if (cursor) {
-      conditions.push(this.sql`
-        (coalesce(r.published_at, r.updated_at) < ${cursor.sortAt}::timestamptz or
-         (coalesce(r.published_at, r.updated_at) = ${cursor.sortAt}::timestamptz and r.id < ${cursor.id}))
-      `);
+      const dateAfter = sort === "oldest"
+        ? this.sql`(coalesce(r.published_at, r.updated_at), r.id) > (${cursor.sortAt}::timestamptz, ${cursor.id}::uuid)`
+        : this.sql`(coalesce(r.published_at, r.updated_at), r.id) < (${cursor.sortAt}::timestamptz, ${cursor.id}::uuid)`;
+      conditions.push(sort === "popular"
+        ? this.sql`(coalesce(likes.like_count, 0) < ${cursor.likeCount} or (coalesce(likes.like_count, 0) = ${cursor.likeCount} and ${dateAfter}))`
+        : dateAfter);
     }
+    const order = sort === "oldest"
+      ? this.sql`coalesce(r.published_at, r.updated_at) asc, r.id asc`
+      : sort === "popular"
+        ? this.sql`coalesce(likes.like_count, 0) desc, coalesce(r.published_at, r.updated_at) desc, r.id desc`
+        : this.sql`coalesce(r.published_at, r.updated_at) desc, r.id desc`;
     const where = conditions.slice(1).reduce(
       (combined, condition) => this.sql`${combined} and ${condition}`,
       conditions[0],
@@ -558,7 +568,7 @@ export class PostgresReportRepository implements ReportRepository {
       ) likes on true
       ${includeIntegration ? this.sql`left join integration_bindings binding on binding.report_id = r.id` : this.sql``}
       where ${where}
-      order by coalesce(r.published_at, r.updated_at) desc, r.id desc
+      order by ${order}
       limit ${limit + 1}
     `;
     const hasMore = rows.length > limit;
@@ -568,7 +578,7 @@ export class PostgresReportRepository implements ReportRepository {
     return {
       reports,
       nextCursor: hasMore && last
-        ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id)
+        ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id, sort, last.likeCount)
         : null,
     };
   }
@@ -625,7 +635,7 @@ export class PostgresReportRepository implements ReportRepository {
         `;
         await tx`
           delete from report_likes
-          where report_id = ${reportId} and member_id = ${actor.id} and not slack_liked
+          where report_id = ${reportId} and member_id = ${actor.id} and not slack_liked and not web_comment_liked
         `;
       }
 

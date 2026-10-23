@@ -1,5 +1,6 @@
 "use client";
 
+import { PresenceTracker } from "@/components/usage-tracker";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useSyncExternalStore } from "react";
@@ -69,6 +70,7 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
 
   return (
     <div className={`app-shell${sidebarCollapsed ? " app-shell--sidebar-collapsed" : ""}`}>
+      <PresenceTracker />
       <a className="skip-link" href="#main-content">本文へ移動</a>
 
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
@@ -105,6 +107,7 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
           ))}
         </nav>
         <div className="sidebar__secondary">
+          <Link className="nav-link" href="/updates" title="パッチノート・クレジット" aria-label="パッチノート・クレジット"><CalendarIcon /><span>更新情報</span></Link>
           {user?.role === "admin" ? (
             <Link
               aria-current={isActive(pathname, "/admin") ? "page" : undefined}
@@ -134,7 +137,7 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
         </Link>
       </header>
 
-      <main className="main-content" id="main-content">{children}</main>
+      <main className="main-content" id="main-content">{children}<footer className="app-footer"><Link href="/updates">パッチノート・クレジット</Link><span>Hanabi Log · FRC Team Hanabi</span></footer></main>
 
       <nav aria-label="モバイルナビゲーション" className="bottom-nav">
         <Link aria-current={pathname === "/" ? "page" : undefined} href="/">

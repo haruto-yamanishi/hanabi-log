@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Opt in with an empty LOCAL PostgreSQL database; never uses DATABASE_URL.
 const state = vi.hoisted(() => ({ after: [] as (() => Promise<void>)[], sql: undefined as unknown,
+  fileUpload: vi.fn(), fileInfo: vi.fn(), fileComplete: vi.fn(), fileDelete: vi.fn(),
   replies: vi.fn(), reactions: vi.fn(), postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "123.456" }),
 }));
 vi.mock("server-only", () => ({}));
@@ -15,11 +16,17 @@ vi.mock("@/server/env", () => ({ isDemoMode: false, env: {
 vi.mock("@/server/db/client", () => ({ getDatabase: () => state.sql }));
 vi.mock("@/server/integrations/outbox", () => ({ processPendingJobs: vi.fn() }));
 vi.mock("@slack/web-api", () => ({ WebClient: class {
+  files = { getUploadURLExternal: state.fileUpload, info: state.fileInfo, completeUploadExternal: state.fileComplete, delete: state.fileDelete };
   reactions = { get: state.reactions };
   conversations = { replies: state.replies };
   chat = { postMessage: state.postMessage };
   users = { info: async ({ user }: { user: string }) => ({ user: { name: user, profile: {} } }) };
 } }));
+
+vi.mock("@/server/db/storage", async importOriginal => ({
+  ...await importOriginal<typeof import("@/server/db/storage")>(),
+  readStoredUpload: vi.fn(async () => ({ bytes: new Uint8Array([1,2,3]), mimeType: 'video/mp4' })),
+}));
 
 import { POST } from "@/app/api/integrations/slack/events/route";
 import { importPastSlackReactions } from "./slack-reaction-backfill";
@@ -46,7 +53,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries", "202610230001_report_media_and_categories", "202610230003_comment_likes", "202610230004_usage_analytics", "202610230005_slack_video_uploads",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
@@ -234,10 +241,13 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     await sql`update integration_bindings set slack_thread_reactions_imported_at = null where report_id = ${report.id}`;
     await sql`insert into slack_report_reactions (channel_id, message_ts, user_id, reaction, active, event_ts)
       values ('C_TEST', ${reply}, 'U_REMOVED', 'heart', false, 1788738001)`;
-    state.replies.mockResolvedValueOnce({
-      messages: [{ ts: message.ts }], has_more: true, response_metadata: { next_cursor: "next-page" },
-    }).mockResolvedValueOnce({
-      messages: [{ ts: reply, thread_ts: message.ts, reactions: [{ name: "heart" }] }], has_more: false,
+    state.replies.mockImplementation(async (input: { cursor?: string; include_all_metadata?: boolean }) => {
+      if (input.include_all_metadata) return { messages: [{ ts: message.ts }, { ts: reply, thread_ts: message.ts, text: "reply", user: "U_AUTHOR" }] };
+      return input.cursor ? {
+        messages: [{ ts: reply, thread_ts: message.ts, reactions: [{ name: "heart" }] }], has_more: false,
+      } : {
+        messages: [{ ts: message.ts }], has_more: true, response_metadata: { next_cursor: "next-page" },
+      };
     });
     state.reactions.mockImplementation(async ({ timestamp }: { timestamp: string }) => ({
       message: { ts: timestamp, thread_ts: message.ts, reactions: timestamp === reply
@@ -246,7 +256,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     }));
     expect(await importPastSlackReactions()).toMatchObject({ remaining: 1 });
     expect(await importPastSlackReactions()).toMatchObject({ remaining: 0, pending: 0 });
-    expect(state.replies).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "next-page" }));
+    expect(state.replies).toHaveBeenCalledWith(expect.objectContaining({ cursor: "next-page" }));
     expect(await sql`select * from report_likes`).toHaveLength(before + 1);
     expect(await sql`select * from members where slack_user_id = 'U_BACKFILL_COMMENT'`).toHaveLength(1);
     const [removed] = await sql`select active from slack_report_reactions where message_ts = ${reply} and user_id = 'U_REMOVED'`;
@@ -338,6 +348,130 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
       values ('ambiguous', 'announcement', 'U_AUTHOR', 'Name', 'Text', 'processing', now() - interval '6 minutes')`;
     await expect(sendSystemDm(client, { ...input, dedupeKey: "ambiguous" })).rejects.toThrow("DM_DELIVERY_IN_PROGRESS_OR_UNKNOWN");
     expect((await listSystemDmHistory()).find(item => item.messageText === "Text")?.status).toBe("unknown");
+  });
+
+  it("counts comment likes for both authors and preserves independent sources on unlike", async () => {
+    const { setCommentLike, rememberComments, withCommentLikes } = await import("./comment-likes");
+    const [owner] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','UOWNERLIKE','Owner') returning *`;
+    const [writer] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','UWRITERLIKE','Writer') returning *`;
+    const [liker] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','ULIKERLIKE','Liker') returning *`;
+    const [report] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status,published_at)
+      values(${owner.id},'2026-10-22','Comment likes','その他','進捗','test','published',now()) returning id`;
+    await sql`insert into integration_bindings(report_id,slack_channel_id,slack_message_ts) values(${report.id},'C_LIKES','1800000000.000001')`;
+    const actor = { id: liker.id, slackUserId: liker.slack_user_id, displayName: 'Liker', role: 'member' as const, isActive: true };
+    const comments = ['1800000001.000001','1800000002.000001'].map(id => ({ id,body:'comment',source:'slack' as const,createdAt:new Date().toISOString(),author:{id:writer.id,displayName:'Writer'} }));
+    await rememberComments(report.id, comments);
+    await setCommentLike(report.id,comments[0].id,actor,true);
+    await setCommentLike(report.id,comments[0].id,actor,true);
+    await setCommentLike(report.id,comments[1].id,actor,true);
+    expect(await sql`select * from report_likes where report_id=${report.id}`).toHaveLength(1);
+    const repository = new PostgresReportRepository();
+    expect((await repository.getLogRanking(owner.id)).likesReceived).toBe(1);
+    expect((await repository.getLogRanking(writer.id)).likesReceived).toBe(2);
+    await sql`insert into slack_report_reactions(channel_id,message_ts,slack_thread_ts,user_id,reaction,active,event_ts)
+      values('C_LIKES',${comments[0].id},'1800000000.000001','ULIKERLIKE','heart',true,1),
+            ('C_LIKES',${comments[0].id},'1800000000.000001','ULIKERLIKE','eyes',true,1)`;
+    const { processIncomingSlackReports } = await import("./slack-incoming-store");
+    await processIncomingSlackReports();
+    expect((await withCommentLikes(report.id,comments,actor.id))[0].likeCount).toBe(1);
+    await repository.setReportLike(report.id,actor,true);
+    await setCommentLike(report.id,comments[0].id,actor,false);
+    await setCommentLike(report.id,comments[1].id,actor,false);
+    expect((await sql`select web_liked,web_comment_liked from report_likes where report_id=${report.id}`)[0]).toMatchObject({web_liked:true,web_comment_liked:false});
+    expect((await repository.getLogRanking(writer.id)).likesReceived).toBe(1);
+    await setCommentLike(report.id,comments[1].id,actor,true);
+    await repository.setReportLike(report.id,actor,false);
+    expect((await sql`select web_liked,web_comment_liked from report_likes where report_id=${report.id}`)[0]).toMatchObject({web_liked:false,web_comment_liked:true});
+    await sql`update slack_report_reactions set active=false,processed_at=null where channel_id='C_LIKES'`;
+    await processIncomingSlackReports();
+    await setCommentLike(report.id,comments[1].id,actor,false);
+    expect(await sql`select * from report_likes where report_id=${report.id}`).toHaveLength(0);
+    expect((await repository.getLogRanking(writer.id)).likesReceived).toBe(0);
+  });
+
+  it("paginates newest, oldest and popularity with tied dates and like counts", async () => {
+    const [owner] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','USORT','Sort owner') returning *`;
+    const actor = { id: owner.id, slackUserId: 'USORT', displayName: 'Sort owner', role: 'admin' as const, isActive: true };
+    const repository = new PostgresReportRepository();
+    const ids = [];
+    for (let index = 0; index < 5; index++) {
+      const [report] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status,published_at)
+        values(${owner.id},'2026-10-23',${`Sort ${index}`},'その他','進捗','test','published',${index < 3 ? '2026-10-22T12:00:00.000Z' : '2026-10-23T12:00:00.000Z'}) returning id`;
+      ids.push(report.id);
+      if (index < 2) await repository.setReportLike(report.id, actor, true);
+    }
+    for (const sort of ['newest', 'oldest', 'popular'] as const) {
+      const all = await repository.listReports({ authorId: owner.id, sort, limit: 50 }, actor);
+      const paginated: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await repository.listReports({ authorId: owner.id, sort, limit: 2, cursor }, actor);
+        paginated.push(...page.reports.map(report => report.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      expect(paginated).toEqual(all.reports.map(report => report.id));
+      expect(new Set(paginated).size).toBe(5);
+      if (sort === 'popular') expect(all.reports.map(report => report.likeCount)).toEqual([1,1,0,0,0]);
+      if (sort === 'oldest') expect(all.reports[0].publishedAt).toBe('2026-10-22T12:00:00.000Z');
+      if (sort === 'newest') expect(all.reports[0].publishedAt).toBe('2026-10-23T12:00:00.000Z');
+    }
+    const first = await repository.listReports({ authorId: owner.id, sort: 'popular', limit: 1 }, actor);
+    await expect(repository.listReports({ sort: 'oldest', cursor: first.nextCursor! }, actor)).rejects.toMatchObject({ status: 422 });
+  });
+
+  it("records a visit once and reports unique viewers and expiring presence", async () => {
+    const { recordPresence, recordReportView, getUsageAnalytics } = await import('@/server/analytics');
+    const [member] = await sql`select * from members where slack_user_id = 'USORT'`;
+    const [report] = await sql`select id from reports where author_id = ${member.id}`;
+    const actor = { id: member.id, slackUserId: 'USORT', displayName: 'Sort owner', role: 'admin' as const, isActive: true };
+    const visit = crypto.randomUUID();
+    await recordReportView(report.id, member.id, visit);
+    await recordReportView(report.id, member.id, visit);
+    await recordReportView(report.id, member.id, crypto.randomUUID());
+    await recordPresence(member.id);
+    let stats = await getUsageAnalytics(actor);
+    expect(stats.reports.find(item => item.id === report.id)).toMatchObject({ views: 2, viewers: 1 });
+    expect(stats.members.find(item => item.id === member.id)?.online).toBe(true);
+    await sql`update member_presence set last_seen_at = now() - interval '3 minutes' where member_id = ${member.id}`;
+    stats = await getUsageAnalytics(actor);
+    expect(stats.members.find(item => item.id === member.id)?.online).toBe(false);
+    expect((await sql`select relrowsecurity from pg_class where relname in ('report_page_views','member_presence','analytics_settings')`).every(row => row.relrowsecurity)).toBe(true);
+  });
+
+  it("resumes a lost Slack video completion response without duplicates and deletes removed videos", async () => {
+    const { createSlackVideoSync } = await import('./slack-videos');
+    const [member] = await sql`select id from members where slack_user_id = 'USORT'`;
+    const [row] = await sql`select id from reports where author_id = ${member.id}`;
+    const repository = new PostgresReportRepository();
+    const report = (await repository.getReport(row.id))!;
+    report.attachments = [{ storagePath: 'owner/video.mp4', filename: 'video.mp4', mimeType: 'video/mp4', sizeBytes: 3, sortOrder: 0 }];
+    const sync = createSlackVideoSync('test');
+    state.fileUpload.mockResolvedValue({ file_id: 'FVIDEO', upload_url: 'https://files.slack.com/upload/test' });
+    state.fileInfo.mockRejectedValueOnce({ data: { error: 'file_deleted' } });
+    state.fileComplete.mockRejectedValueOnce(new Error('Lost response after sharing'));
+    const upload = vi.fn().mockResolvedValue(new Response('ok'));
+    vi.stubGlobal('fetch', upload);
+    try {
+      await expect(sync(report, 'C_VIDEO', '123.001')).rejects.toThrow('Lost response');
+      expect((await sql`select uploaded,shared from slack_video_uploads where report_id=${report.id}`)[0]).toMatchObject({ uploaded: true, shared: false });
+      state.fileInfo.mockResolvedValue({ file: { shares: { public: { C_VIDEO: [{ thread_ts: '123.001' }] } } } });
+      await sync(report, 'C_VIDEO', '123.001');
+      await sync(report, 'C_VIDEO', '123.001');
+      expect(state.fileUpload).toHaveBeenCalledTimes(1);
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect(state.fileComplete).toHaveBeenCalledTimes(1);
+      state.fileDelete.mockResolvedValue({ ok: true });
+      await sync({ ...report, attachments: [] }, 'C_VIDEO', '123.001');
+      expect(state.fileDelete).toHaveBeenCalledWith({ file: 'FVIDEO' });
+      expect(await sql`select * from slack_video_uploads where report_id=${report.id}`).toHaveLength(0);
+      // The lease prevents a concurrent worker from obtaining a new file ID.
+      await sql`insert into slack_video_uploads(report_id,storage_path,channel_id,thread_ts,lease_until) values(${report.id},'owner/video.mp4','C_VIDEO','123.001',now()+interval '1 minute')`;
+      await expect(sync(report, 'C_VIDEO', '123.001')).rejects.toThrow('SLACK_VIDEO_BUSY');
+      expect(state.fileUpload).toHaveBeenCalledTimes(1);
+      await sql`update slack_video_uploads set lease_until=null,file_id='FARCHIVED',shared=true where report_id=${report.id}`;
+      await sync({ ...report, status: 'archived' }, 'C_VIDEO', '123.001');
+      expect(state.fileDelete).toHaveBeenLastCalledWith({ file: 'FARCHIVED' });
+    } finally { vi.unstubAllGlobals(); }
   });
 
 });

@@ -242,3 +242,89 @@ Slack仕様: [reactions.get](https://docs.slack.dev/reference/methods/reactions.
 `thread_not_found` / `message_not_found` を返すスレッドを失敗として記録して、
 残りの取り込みを続行します。管理画面に除外件数を表示し、取り込み済みとは区別します。
 権限不足・レート制限・通信障害は除外せず、従来どおり再試行できます。
+
+### Slack画像・動画と過去日報の修復（2026-10）
+
+`202610230001_report_media_and_categories.sql` と `202610230002_mov_storage.sql` を適用します。Slack Botに
+`files:read` を追加してワークスペースへ再インストールしてください。
+Web動画はMP4 / WebM / MOV（47MiBまで）に対応しています。
+Slack返信の添付は、コメント取得時に非公開Storageへ保存して表示します。
+取得できなかった添付は本文を隠さず未取得と表示します。
+
+Slackカードの画像は、公開中の添付に限定した専用URLを使用します。
+画像を削除したり日報をアーカイブするとアクセスを拒否します。
+URLは画像へのアクセス権を含むため、ログや公開資料へ転載しないでください。
+再投稿時は既存Slackカードを照合し、投稿IDを本文スレッド・Notion同期より先に保存します。
+
+過去の直接投稿・添付・返信・スタンプを再開可能な形で移行できます。
+まず `--apply` なしで対象件数を確認してください。実行時はデモ設定を必ず無効化します。
+移行は日報チャンネルのユーザーの親投稿を対象とし、Bot投稿・システム通知・返信を日報として重複登録しません。
+
+```bash
+DEMO_MODE=false node --env-file=.env.local --conditions=react-server --import tsx scripts/slack-repair.ts
+DEMO_MODE=false node --env-file=.env.local --conditions=react-server --import tsx scripts/slack-repair.ts --apply
+```
+
+`--repair-messages` を追加すると既存のWeb由来Slackカードの画像URLも更新します。
+50MBを超える過去動画は `scripts/slack-compress-history.ts` でWeb用コピーを圧縮できます
+（ffmpeg / ffprobeが必要、Slackの元動画は維持）。その後もう一度取り込みを実行してください。
+`slack_incoming_reports.media_error` に添付の未取得理由を保存します。
+
+### コメントいいねと下書きプレビュー
+
+`202610230003_comment_likes.sql` を適用します。Webコメントのいいねは独立した状態として保存し、
+Slackの複数スタンプ・WebとSlackの重複をコメントごとに1人1件へまとめます。
+日報には同じ人から最大1件、コメント投稿者のランキングには各コメントで受けた件数を加算します。
+日報投稿者とコメント投稿者が同じ場合は同じ人に二重加算しません。
+一方のサービスで解除しても、他方のいいねは残ります。
+過去コメントの投稿者情報も `slack-repair.ts --apply --comments-only` で取り込めます。
+
+下書き編集では、追加した画像と動画をその場でプレビューできます。動画は再生・シーク可能です。
+保存した下書きを開き直した場合も、非公開Storageからプレビューを取得します。
+
+### 本文メンション・並び順・利用状況（2026-10-23）
+
+本文の各入力欄で `@` を入力するとSlackメンバー候補が開きます。表示名・本名・ユーザー名を
+NFKC、大小文字、空白、かなを正規化して検索します。保存値はSlack ID付きのトークン、
+編集時の表示は `@名前` です。名前そのものを編集した場合は通知対象から外します。
+アーカイブの `sort` は `newest`（既定）・`oldest`・`popular`。人気順は日報のいいね人数で、
+同数の場合は公開日時・IDの降順です。カーソルには並び順といいね数も保持します。
+
+`202610230004_usage_analytics.sql` を適用してから新バージョンをデプロイします。
+管理者専用 `/api/admin/analytics` から、登録日時、最終アクセス、オンラインの目安、
+日報別PV・閲覧者数を確認できます。オンラインは表示中のタブが60秒ごとに送る通信が
+直近2分以内にあった状態です。タブを隠したり閉じた場合は2分以内にオフラインになります。
+IPアドレスや閲覧パスは保存しません。閲覧は日報ID・メンバーID・訪問ID・日時を保持します。
+詳細画面の表示後に計測し、同じ訪問IDの再送は重複加算しません。再読み込みや投稿者自身の閲覧は
+PVに含め、同じ人の閲覧者数は1人とします。下書き・承認待ちは計測しません。
+計測開始日時はDBに保存し、開始前のPVを推測で補完しません。
+
+`/updates` にパッチノートとクレジットを掲載しています。
+
+### Slack内の動画再生
+
+`202610230005_slack_video_uploads.sql` を適用し、Slackアプリの **Bot Token Scopes** に
+`files:write` を追加して再インストールします。**User Token Scopes** の `openid` / `profile` /
+`email` と `files:write` を混在させないでください（ログイン用とBot用は別の認証フローです）。
+
+Web日報の動画は、親投稿のスレッドへSlackネイティブのファイルとして配信します。
+getUploadURLExternal → バイナリアップロード → completeUploadExternal を使い、ファイルIDを
+共有前にDBへ保存します。完了応答が失われても同じIDの共有状態を照合し、再アップロードしません。
+動画の削除・日報のアーカイブ時は、この連携が作ったSlackファイルだけを削除します。
+Slackから取り込んだ元投稿・元動画は変更しません。配信された動画をWebコメントとして再取り込みしません。
+Slackの動画処理が終わるまで、プレーヤーが表示されるまで時間がかかる場合があります。
+
+過去のWeb日報の動画を配信するには、まずdry-runで対象を確認し、`--apply` を追加します。
+
+```bash
+DEMO_MODE=false APP_BASE_URL=https://log.9494hanabi.com node --env-file=.env.local --conditions=react-server --import tsx scripts/slack-sync-videos.ts
+```
+
+本文メンションはSlackユーザーグループにも対応しています。Slackアプリの **Bot Token Scopes** に
+`usergroups:read` を追加し、再インストールします。候補にはグループ名・ハンドル・人数を表示し、
+`@[名前](slack:S...)` として保存して、Slack投稿時に `<!subteam^S...>` へ変換します。
+個人メンションは従来どおり利用でき、グループの権限不足は候補内に表示します。
+コメント欄は表示中に30秒ごとに更新します。動画再生中・コメント送信中は自動更新を待ちます。
+
+過去のパッチノートはコミット日付から復元しました。掲載内容と根拠のコミットは
+[docs/release-history.md](docs/release-history.md) に記録しています。

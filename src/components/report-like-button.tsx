@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "@/components/api-client";
 import { HeartIcon } from "@/components/icons";
 import { Avatar } from "@/components/ui";
-import type { CurrentUser, ReportLikeSummary, ReportLiker } from "@/lib/types";
+import type { CurrentUser, Report, ReportLikeSummary, ReportLiker } from "@/lib/types";
 
 export function ReportLikeButton({
   reportId,
@@ -23,6 +23,19 @@ export function ReportLikeButton({
   const [likedBy, setLikedBy] = useState(initialLikedBy);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function refresh(event: Event) {
+      if ((event as CustomEvent<{ reportId: string }>).detail?.reportId !== reportId) return;
+      void apiRequest<Report>(`/api/reports/${reportId}`).then(report => {
+        setCount(report.likeCount ?? 0);
+        setLiked(report.likedByCurrentUser ?? false);
+        setLikedBy(report.likedBy ?? []);
+      }).catch(() => undefined);
+    }
+    window.addEventListener("hanabi-report-likes-changed", refresh);
+    return () => window.removeEventListener("hanabi-report-likes-changed", refresh);
+  }, [reportId]);
 
   async function toggleLike() {
     if (acting) return;

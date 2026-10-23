@@ -1,3 +1,5 @@
+export const maxDuration = 300;
+
 import { timingSafeEqual } from "node:crypto";
 import { apiResponse } from "@/app/api/_shared";
 import { env, isDemoMode } from "@/server/env";

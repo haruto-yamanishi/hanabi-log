@@ -25,7 +25,7 @@ export async function processIncomingSlackReports(): Promise<void> {
     try {
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID} and slack_user_id = ${candidate.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: candidate.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+      if (!existing.length && (!profile || profile.is_bot || (profile.deleted && !candidate.historical))) {
         if (retryEnabled) {
           await sql`update slack_incoming_reports set dead_at = now(), last_error = 'slack_user_unavailable'
             where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts}
@@ -72,12 +72,12 @@ export async function processIncomingSlackReports(): Promise<void> {
 
         const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(candidate.user_id);
         if (!existing.length) {
-          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role)
-            values (${env.SLACK_TEAM_ID!}, ${candidate.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || candidate.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"})
+          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role, is_active)
+            values (${env.SLACK_TEAM_ID!}, ${candidate.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || candidate.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"}, ${!profile?.deleted})
             on conflict (slack_team_id, slack_user_id) do nothing`;
         }
         const [member] = await tx`select * from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${candidate.user_id}`;
-        const published = member.is_active || member.role === "admin";
+        const published = message.historical || member.is_active || member.role === "admin";
         const occurredAt = new Date(Number(message.message_ts) * 1000);
         const reportDate = toHanabiReportDate(occurredAt);
         const [report] = await tx`insert into reports (author_id, report_date, title, summary, activity_area, content_category, activity_text, status, published_at)
@@ -121,6 +121,8 @@ export async function processIncomingSlackReports(): Promise<void> {
       }
     }
   }
+  const { importSourceMedia } = await import("@/server/integrations/slack-source-media");
+  await importSourceMedia();
   await resolveSlackReactionThreads(client);
   await processSlackReactions(client, retryEnabled);
 }
@@ -140,9 +142,21 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
 
   for (const reaction of pending) {
     try {
+      const [missingComment] = await sql`select s.message_ts from slack_report_reactions s
+        where s.channel_id=${reaction.channel_id} and coalesce(s.slack_thread_ts,s.message_ts)=${reaction.parent_ts}
+          and s.message_ts<>${reaction.parent_ts}
+          and not exists(select 1 from report_comments c where c.report_id=${reaction.report_id} and c.message_ts=s.message_ts)
+        limit 1`;
+      if (missingComment) {
+        const [{ createSlackCommentService }, { rememberComments }, { getReportRepository }] = await Promise.all([
+          import("@/server/integrations/slack-comments"), import("@/server/integrations/comment-likes"), import("@/server/repositories"),
+        ]);
+        const comments = await createSlackCommentService(env.SLACK_BOT_TOKEN!).list({ channel: reaction.channel_id, threadTs: reaction.parent_ts, members: await getReportRepository().listMembers() });
+        await rememberComments(reaction.report_id, comments);
+      }
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${reaction.user_id}`;
       const profile = existing.length ? undefined : (await client.users.info({ user: reaction.user_id })).user;
-      if (!existing.length && (!profile || profile.is_bot || profile.deleted)) {
+      if (!existing.length && (!profile || profile.is_bot)) {
         if (retryEnabled) {
           await sql`update slack_report_reactions set dead_at = now(), last_error = 'slack_user_unavailable'
             where channel_id = ${reaction.channel_id} and coalesce(slack_thread_ts, message_ts) = ${reaction.parent_ts}
@@ -173,8 +187,8 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
           order by message_ts, reaction for update`;
         if (!existing.length) {
           const admin = (env.ADMIN_SLACK_USER_IDS ?? "").split(",").map(value => value.trim()).includes(reaction.user_id);
-          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role)
-            values (${env.SLACK_TEAM_ID!}, ${reaction.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || reaction.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"})
+          await tx`insert into members (slack_team_id, slack_user_id, display_name, avatar_url, role, is_active)
+            values (${env.SLACK_TEAM_ID!}, ${reaction.user_id}, ${profile?.profile?.display_name || profile?.real_name || profile?.name || reaction.user_id}, ${profile?.profile?.image_192 ?? null}, ${admin ? "admin" : "member"}, ${!profile?.deleted})
             on conflict (slack_team_id, slack_user_id) do nothing`;
         }
         const [member] = await tx`select id from members where slack_team_id = ${env.SLACK_TEAM_ID!} and slack_user_id = ${reaction.user_id}`;
@@ -184,7 +198,7 @@ async function processSlackReactions(client: WebClient, retryEnabled: boolean): 
             on conflict (report_id, member_id) do update set slack_liked = true`;
         } else {
           await tx`update report_likes set slack_liked = false where report_id = ${reaction.report_id} and member_id = ${member.id}`;
-          await tx`delete from report_likes where report_id = ${reaction.report_id} and member_id = ${member.id} and not web_liked`;
+          await tx`delete from report_likes where report_id = ${reaction.report_id} and member_id = ${member.id} and not web_liked and not web_comment_liked`;
         }
         // Only acknowledge the exact rows locked above; a new emoji inserted
         // concurrently must remain pending for the next aggregation.
