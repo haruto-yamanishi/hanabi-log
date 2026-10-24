@@ -11,6 +11,7 @@ export default function UpdatesPage() {
       <li>X・Instagram・note・IGNITERS・その他への掲載許可を、日報の詳細ページから依頼できます。依頼と返事をSlack DMで通知します。</li>
       <li>日報を書いた人は、原文のまま許可・自分で校正・校正を依頼・拒否から返事を選べます。校正がある場合は投稿本文と確認用URLを送り、本人が最終確認できます。</li>
       <li>依頼時の日報、校正内容、返事と確認履歴を保存し、元の日報を変更せずに掲載準備を進められます。</li>
+      <li>Safariでメンションを挿入した直後に入力すると、カーソルが文末へ移ることがある問題を修正しました。</li>
     </ul></section>
     <section className="admin-panel" aria-labelledby="latest-release"><p className="release-date">2026年10月23日 · 操作性・管理機能の改善</p><h2 id="latest-release">書く・探す・見守るを、もっと使いやすく</h2>
       <ul>

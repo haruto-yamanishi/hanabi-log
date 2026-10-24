@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { apiRequest } from "@/components/api-client";
 import { editMentionText, matchesMention, mentionDocument, type MentionUser, type MentionDirectory } from "@/lib/mention-editor";
 
@@ -21,9 +21,19 @@ export function SlackMentionTextarea({ value, onValueChange, ...props }: Props) 
   const [trigger, setTrigger] = useState<{ start: number; end: number; query: string } | null>(null);
   const [selected, setSelected] = useState(0);
   const composing = useRef(false);
+  const pendingSelection = useRef<{ text: string; position: number } | null>(null);
   const doc = mentionDocument(value);
   const candidates = trigger ? users.filter(user => matchesMention(user, trigger.query)).slice(0, 30) : [];
   const listId = `${props.id}-mentions`;
+  useLayoutEffect(() => {
+    const pending = pendingSelection.current;
+    if (!pending || pending.text !== doc.text) return;
+    // Restore the caret in the same commit as the controlled value, before
+    // another keystroke can land at WebKit's default end-of-input position.
+    textarea.current?.focus();
+    textarea.current?.setSelectionRange(pending.position, pending.position);
+    pendingSelection.current = null;
+  }, [doc.text]);
   useEffect(() => {
     if (trigger) document.getElementById(`${listId}-${selected}`)?.scrollIntoView({ block: "nearest" });
   }, [selected, trigger, listId]);
@@ -42,10 +52,9 @@ export function SlackMentionTextarea({ value, onValueChange, ...props }: Props) 
     const name = user.name.replace(/[\]\n]/g, " ");
     const next = doc.slice(0, trigger.start) + `@[${name}](slack:${user.id}) ` + doc.slice(trigger.end, doc.text.length);
     if (props.maxLength && next.length > props.maxLength) return;
+    pendingSelection.current = { text: mentionDocument(next).text, position: trigger.start + name.length + 2 };
     onValueChange(next);
     setTrigger(null);
-    const position = trigger.start + name.length + 2;
-    requestAnimationFrame(() => { textarea.current?.focus(); textarea.current?.setSelectionRange(position, position); });
   }
   return <div className="mention-editor">
     <textarea {...props} ref={textarea} value={doc.text} aria-autocomplete="list" aria-controls={trigger ? listId : undefined} aria-activedescendant={trigger && candidates[selected] ? `${listId}-${selected}` : undefined}
