@@ -1,6 +1,6 @@
 export interface SystemDmHistory {
   id: string;
-  kind: "like" | "contribution_nudge" | "announcement";
+  kind: "like" | "contribution_nudge" | "announcement" | "publication";
   reportId: string | null;
   reportTitle: string | null;
   recipientName: string;

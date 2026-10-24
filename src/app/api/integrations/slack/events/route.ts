@@ -1,3 +1,6 @@
+export const maxDuration = 300;
+import { replyThread } from "@/server/integrations/slack-reply-event";
+import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
 import { after } from "next/server";
 import { env, isDemoMode } from "@/server/env";
 import { getDatabase } from "@/server/db/client";
@@ -18,9 +21,11 @@ export async function POST(request: Request): Promise<Response> {
   if (payload.team_id !== env.SLACK_TEAM_ID) return new Response(null, { status: 403 });
   const message = payload.type === "event_callback" ? incomingSlackMessage(payload.event, env.SLACK_CHANNEL_ID) : null;
   const reaction = payload.type === "event_callback" ? incomingSlackReaction(payload.event, env.SLACK_CHANNEL_ID) : null;
-  if (message || reaction) {
+  const thread = payload.type === "event_callback" ? replyThread(payload.event, env.SLACK_CHANNEL_ID) : null;
+  if (message || reaction || thread) {
     const sql = getDatabase();
     const retryEnabled = slackIngestionRetryEnabled();
+    if (thread) await sql`update integration_bindings set comment_media_sync_requested_at=now() where slack_channel_id=${env.SLACK_CHANNEL_ID} and slack_message_ts=${thread}`;
     if (message) {
       if (retryEnabled) {
         await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts, file_ids)
@@ -70,6 +75,7 @@ export async function POST(request: Request): Promise<Response> {
     after(async () => {
       try {
         await processIncomingSlackReports();
+        await syncCommentMedia();
         await processLikeNotifications();
         await processPendingJobs();
       } catch { console.error("Deferred Slack import failed; retained for cron retry"); }

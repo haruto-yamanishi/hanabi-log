@@ -46,7 +46,7 @@ const target: Member = {
   updatedAt: "2026-08-20T00:00:00.000Z",
 };
 
-function request(role: "member" | "admin"): Request {
+function request(role: "member" | "media" | "admin"): Request {
   return new Request(`https://hanabi.example/api/members/${target.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -75,6 +75,14 @@ function context(id = target.id) {
 }
 
 describe("PATCH /api/members/:id", () => {
+  it("allows an admin to grant Media without allowing self-demotion", async () => {
+    mocks.setMemberRole.mockResolvedValue({...target,role:'media'});
+    const result=await PATCH(request('media'),context());
+    expect(result.status).toBe(200);
+    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id,'media');
+    expect((await PATCH(request('media'),context(admin.id))).status).toBe(409);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireCurrentUser.mockResolvedValue(admin);

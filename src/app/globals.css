@@ -168,7 +168,7 @@ strong {
   border-top: 1px solid var(--line);
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   height: calc(68px + env(safe-area-inset-bottom));
   left: 0;
   padding: 5px 5px env(safe-area-inset-bottom);
@@ -2168,3 +2168,49 @@ h3 {
 .member-row .presence-online { color: #16723b; font-weight: 600; }
 
 .mention-menu__group { display: inline-block; margin-left: 6px; padding: 1px 5px; border-radius: 3px; background: #edf0f3; color: var(--muted); font-size: 10px; }
+
+/* Media gallery */
+.media-filters { display:flex; align-items:end; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
+.media-filters label { display:grid; gap:6px; font-size:12px; font-weight:700; }
+.media-filters select { padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface, #fff); color:inherit; font:inherit; }
+.media-filters > span { color:var(--muted); font-size:12px; padding-bottom:10px; }
+.media-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; }
+.media-card { overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--surface, #fff); min-width:0; }
+.media-card__preview { position:relative; aspect-ratio:4/3; background:#e9edf1; }
+.media-card__preview > a { display:block; width:100%; height:100%; }
+.media-card__preview img, .media-card__preview video { display:block; width:100%; height:100%; object-fit:contain; }
+.media-card__preview video { background:#16202d; }
+.media-card__badge { position:absolute; top:10px; left:10px; padding:4px 8px; background:rgba(18,30,44,.8); color:white; border-radius:5px; font-size:10px; pointer-events:none; }
+.media-card__body { padding:16px; }
+.media-card__body time { font-size:11px; color:var(--muted); }
+.media-card__body h2 { margin:8px 0; font-size:15px; line-height:1.5; overflow-wrap:anywhere; }
+.media-card__author { font-size:12px; color:var(--muted); }
+.media-card__links { display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; font-size:12px; font-weight:700; }
+.media-card__unavailable { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:8px; font-size:12px; text-align:center; padding:20px; }
+.media-more { display:block; margin:24px auto; }
+@media (max-width:1100px) { .media-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:600px) { .media-grid { grid-template-columns:1fr; gap:16px; } .media-filters { gap:12px; } .media-filters > span { width:100%; } }
+
+/* Publication consent and editorial review */
+.publication-panel { border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:24px; margin-bottom:24px; overflow-wrap:anywhere; }
+.publication-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.publication-form { display:grid; gap:18px; margin-top:18px; }
+.publication-form label { display:grid; gap:8px; font-size:13px; font-weight:600; }
+.publication-form input:not([type=checkbox]), .publication-form textarea { width:100%; border:1px solid var(--line); border-radius:8px; padding:12px; background:var(--surface); color:inherit; font:inherit; }
+.publication-form textarea { resize:vertical; line-height:1.7; }
+.publication-form fieldset { border:0; padding:0; margin:0; }
+.publication-form legend { font-size:13px; font-weight:700; margin-bottom:12px; }
+.publication-channels { display:flex; flex-wrap:wrap; gap:12px 20px; }
+.publication-channels label { display:flex; align-items:center; gap:8px; }
+.publication-choices { display:grid; gap:10px; }
+.publication-choices .button { white-space:normal; justify-content:flex-start; text-align:left; padding:12px 16px; }
+.publication-text { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.8; }
+.publication-help { color:var(--muted); font-size:12px; line-height:1.8; }
+.publication-list { display:grid; gap:16px; }
+.publication-list__item { display:block; border:1px solid var(--line); background:var(--surface); padding:20px; border-radius:10px; }
+.publication-list__item h2 { font-size:18px; }
+.publication-list__item p, .publication-history p { font-size:13px; }
+.publication-history { display:grid; gap:20px; padding-left:20px; }
+.publication-panel summary { cursor:pointer; font-size:13px; font-weight:600; padding:8px 0; }
+.publication-panel h2 { font-size:19px; }.publication-panel h3 { font-size:15px; }
+@media(max-width:600px) { .publication-panel { padding:16px; }.publication-actions .button { white-space:normal; }.publication-form > .button { white-space:normal; } }

@@ -5,6 +5,13 @@ export const metadata: Metadata = { title: "パッチノート・クレジット
 export default function UpdatesPage() {
   return <div className="page updates-page">
     <PageHeader title="パッチノート・クレジット" description="Hanabi Logの更新情報と、この場所をつくる人たち。" />
+    <section className="admin-panel" aria-labelledby="publication-release"><p className="release-date">2026年10月24日 · メディア一覧・掲載許可</p><h2 id="publication-release">活動の記録を見つけ、本人の許可を得て発信する</h2><ul>
+      <li>日報とコメントの写真・動画をまとめた「メディア」ページを追加。種類や添付先で絞り込み、日報本文と投稿者のプロフィールへ移動できます。</li>
+      <li>ブランディング担当向けにMedia権限を追加。Adminも同じ掲載依頼の操作ができます。</li>
+      <li>X・Instagram・note・IGNITERS・その他への掲載許可を、日報の詳細ページから依頼できます。依頼と返事をSlack DMで通知します。</li>
+      <li>日報を書いた人は、原文のまま許可・自分で校正・校正を依頼・拒否から返事を選べます。校正がある場合は投稿本文と確認用URLを送り、本人が最終確認できます。</li>
+      <li>依頼時の日報、校正内容、返事と確認履歴を保存し、元の日報を変更せずに掲載準備を進められます。</li>
+    </ul></section>
     <section className="admin-panel" aria-labelledby="latest-release"><p className="release-date">2026年10月23日 · 操作性・管理機能の改善</p><h2 id="latest-release">書く・探す・見守るを、もっと使いやすく</h2>
       <ul>
         <li>本文で「@」を入力するとSlackメンバーの候補を表示。続けて名前を入力して絞り込み、カーソルの位置に挿入できます。表示名・本名・ユーザー名で検索でき、全角・半角やひらがな・カタカナの違いも吸収します。</li>

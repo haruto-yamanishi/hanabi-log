@@ -9,7 +9,7 @@ import { getReportRepository } from "@/server/repositories";
 
 const memberIdSchema = z.uuid();
 const memberUpdateSchema = z.union([
-  z.object({ role: z.enum(["member", "admin"]) }).strict(),
+  z.object({ role: z.enum(["member", "media", "admin"]) }).strict(),
   z.object({ isActive: z.boolean() }).strict(),
 ]);
 
@@ -32,8 +32,8 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
     let member;
     let auditAction: string;
     if ("role" in update) {
-      if (memberId === actor.id && update.role === "member") {
-        throw new AppError("SELF_DEMOTION_FORBIDDEN", "自分自身をMemberへ変更することはできません", 409);
+      if (memberId === actor.id && update.role !== "admin") {
+        throw new AppError("SELF_DEMOTION_FORBIDDEN", "自分自身のAdmin権限は外せません", 409);
       }
       member = await repository.setMemberRole(memberId, update.role);
       auditAction = "member.role_changed";

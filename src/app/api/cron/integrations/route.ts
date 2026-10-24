@@ -1,3 +1,5 @@
+import { processPublicationNotifications } from "@/server/publication";
+import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
 export const maxDuration = 300;
 
 import { timingSafeEqual } from "node:crypto";
@@ -27,6 +29,8 @@ export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     if (!authorized(request)) throw new AppError("UNAUTHORIZED", "Cron認証に失敗しました", 401);
     await processIncomingSlackReports();
+    await syncCommentMedia();
+    await processPublicationNotifications();
     await processLikeNotifications();
     const result = await processPendingJobs();
     const cleanup = await cleanupOperationalData();

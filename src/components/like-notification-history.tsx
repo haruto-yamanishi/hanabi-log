@@ -44,7 +44,7 @@ export function LikeNotificationHistoryPanel() {
             <div className="sync-issue__body" style={{ display: "grid", gap: "0.75rem" }}>
               <div className="sync-issue__title"><strong>{item.recipientName} 宛て</strong><span>{labels[item.status]}</span></div>
               <small>Slack ID: {item.recipientSlackUserId}{!item.recipientRecorded ? "（現在の登録情報・送信時の宛先記録なし）" : ""}</small>
-              <span>{{ like: "いいね通知", contribution_nudge: "活動リマインド", announcement: "お知らせ" }[item.kind]}</span>
+              <span>{{ like: "いいね通知", contribution_nudge: "活動リマインド", announcement: "お知らせ", publication: "掲載許可" }[item.kind]}</span>
               {item.reportId ? <Link href={`/reports/${item.reportId}`} prefetch={false}>{slackDisplayText(item.reportTitle ?? "日報を見る")}</Link> : null}
               {item.messageText ? <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", font: "inherit" }}>{item.messageText.split(/(<https?:\/\/[^<>]+>)/g).map((part, index) => {
                   const link = /^<(https?:\/\/[^<>|]+)(?:\|([^<>]*))?>$/.exec(part);

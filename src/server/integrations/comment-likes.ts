@@ -4,8 +4,14 @@ import { getDatabase } from "@/server/db/client";
 import { env, isDemoMode } from "@/server/env";
 import { AppError } from "@/server/errors";
 
-export async function rememberComments(reportId: string, comments: ReportComment[]): Promise<void> {
-  if (isDemoMode || !comments.length) return;
+export async function rememberComments(reportId: string, comments: ReportComment[], snapshot = false): Promise<void> {
+  if (isDemoMode) return;
+  if (snapshot) {
+    const sql = getDatabase();
+    // Keep historical likes, but remove media from replies no longer in Slack.
+    await sql`update report_comments set attachments='[]'::jsonb where report_id=${reportId} and not (message_ts = any(${comments.map(comment => comment.id)}::text[]))`;
+  }
+  if (!comments.length) return;
   const sql = getDatabase();
   const unknown = comments.filter(comment => !comment.author.id && /^[UW][A-Z0-9]+$/.test(comment.author.slackUserId ?? ""));
   if (unknown.length && env.SLACK_TEAM_ID) {
@@ -16,9 +22,9 @@ export async function rememberComments(reportId: string, comments: ReportComment
     const members = await sql`select id,slack_user_id from members where slack_team_id=${env.SLACK_TEAM_ID} and slack_user_id in ${sql(authors.map(author => author.slackUserId!))}`;
     for (const comment of unknown) comment.author.id = members.find(member => member.slack_user_id === comment.author.slackUserId)?.id;
   }
-  const rows = comments.map(comment => ({ report_id: reportId, message_ts: comment.id, author_id: comment.author.id ?? null, body: comment.body, source: comment.source, created_at: comment.createdAt }));
-  await sql`insert into report_comments ${sql(rows, "report_id", "message_ts", "author_id", "body", "source", "created_at")}
-    on conflict(report_id,message_ts) do update set author_id=coalesce(excluded.author_id,report_comments.author_id),body=excluded.body`;
+  const rows = comments.map(comment => ({ report_id: reportId, message_ts: comment.id, author_id: comment.author.id ?? null, body: comment.body, source: comment.source, created_at: comment.createdAt, attachments: sql.json((comment.attachments ?? []).map(({ id, filename, mimeType }) => ({ id, filename, mimeType }))) }));
+  await sql`insert into report_comments ${sql(rows, "report_id", "message_ts", "author_id", "body", "source", "created_at", "attachments")}
+    on conflict(report_id,message_ts) do update set author_id=coalesce(excluded.author_id,report_comments.author_id),body=excluded.body,attachments=excluded.attachments`;
   const events = comments.flatMap(comment => comment.author.id ? [{ member_id: comment.author.id, report_id: reportId, occurred_at: comment.createdAt, kind: "comment", event_key: `comment:${reportId}:${comment.source}:${comment.id}` }] : []);
   if (events.length) await sql`insert into member_contribution_events ${sql(events,"member_id","report_id","occurred_at","kind","event_key")} on conflict(event_key) do nothing`;
 }

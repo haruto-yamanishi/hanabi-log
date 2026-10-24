@@ -1,5 +1,6 @@
 "use client";
 
+import { PublicationRequestForm } from "@/components/publication-request-form";
 import { ReportViewTracker } from "@/components/usage-tracker";
 import { displayMentions } from "@/lib/text";
 
@@ -161,6 +162,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
       {report.status === "draft" ? <div className="draft-banner"><EditIcon /><p><strong>下書きです</strong><span>SlackとNotionにはまだ配信されていません。</span></p></div> : null}
       {report.status === "pending_approval" ? <div className="approval-banner"><CheckIcon /><p><strong>公開承認待ちです</strong><span>Adminが承認するまで本人とAdminだけが閲覧できます。</span></p></div> : null}
 
+      {user && report.status === "published" ? <PublicationRequestForm report={report} user={user} /> : null}
       <article className={`report-article ${activityAreaClassName(report.activityArea)}`}>
         <header className="report-article__header">
           <div className="badge-row">

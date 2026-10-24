@@ -53,10 +53,95 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries", "202610230001_report_media_and_categories", "202610230003_comment_likes", "202610230004_usage_analytics", "202610230005_slack_video_uploads",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries", "202610230001_report_media_and_categories", "202610230003_comment_likes", "202610230004_usage_analytics", "202610230005_slack_video_uploads", "202610230006_media_gallery", "202610240001_publication_permissions",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
+
+  it("lists report and comment media without leaking drafts, and removes deleted reply media", async () => {
+    const { rememberComments } = await import("./comment-likes");
+    const { listMedia, findMedia } = await import("@/server/media-gallery");
+    const [member] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','U_GALLERY','Gallery') returning *`;
+    const actor = { id: member.id, slackTeamId: member.slack_team_id, slackUserId: member.slack_user_id, displayName: member.display_name, role: 'member' as const, isActive: true };
+    const [draft] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status)
+      values(${member.id},'2026-10-23','Gallery','ロボット','進捗','Media','draft') returning id`;
+    await sql`insert into attachments(report_id,storage_path,filename,mime_type,size_bytes,sort_order) values(${draft.id},'private','draft.jpg','image/jpeg',10,0)`;
+    expect((await listMedia({ kind:'all',source:'all' }, actor)).items.some(item => item.reportId === draft.id)).toBe(false);
+    await sql`update reports set status='published' where id=${draft.id}`;
+    const comments = [{ id:'1800010000.000001',body:'',source:'slack' as const,createdAt:new Date().toISOString(),author:{id:member.id,displayName:'Gallery'},attachments:[{id:'FGALLERY',filename:'reply.mp4',mimeType:'video/mp4'}] }];
+    await rememberComments(draft.id, comments, true);
+    const page = await listMedia({ kind:'all',source:'all' }, actor);
+    expect(page.items.filter(item => item.reportId === draft.id)).toHaveLength(2);
+    const videos = await listMedia({ kind:'video',source:'comment' }, actor);
+    const video = videos.items.find(item => item.reportId === draft.id)!;
+    expect(video.commentId).toBe(comments[0].id);
+    expect(video.authorId).toBe(member.id);
+    expect(await findMedia(video.id,actor)).toMatchObject({file_id:'FGALLERY'});
+    await sql`update reports set status='archived' where id=${draft.id}`;
+    const outsider={...actor,id:crypto.randomUUID()};
+    expect(await findMedia(video.id,outsider)).toBeUndefined();
+    expect((await listMedia({kind:'all',source:'all'},outsider)).items).toHaveLength(0);
+    expect(await findMedia(video.id,{...outsider,role:'admin'})).toBeDefined();
+    await sql`update reports set status='published' where id=${draft.id}`;
+    await rememberComments(draft.id, [], true);
+    expect(await findMedia(video.id,actor)).toBeUndefined();
+    await sql`insert into attachments(report_id,storage_path,filename,mime_type,size_bytes,sort_order)
+      select ${draft.id}, 'gallery-' || n, 'photo.jpg', 'image/jpeg', 10, n from generate_series(1,26) n`;
+    const first = await listMedia({kind:'image',source:'report'},actor);
+    expect(first.items).toHaveLength(24);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await listMedia({kind:'image',source:'report',cursor:first.nextCursor!},actor);
+    expect(second.items).toHaveLength(3);
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.items,...second.items].map(item => item.id)).size).toBe(27);
+    await expect(listMedia({kind:'all',source:'all',cursor:'invalid'},actor)).rejects.toMatchObject({status:422});
+    await sql`delete from reports where id=${draft.id}`;
+  });
+
+  it("persists consent, exact revisions, and retryable DM notifications atomically", async () => {
+    const {createPublication,actOnPublication,getPublication,listPublications,processPublicationNotifications} = await import("@/server/publication");
+    const [author] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','U_PUBLICATION_AUTHOR','Author') returning *`;
+    const [editor] = await sql`insert into members(slack_team_id,slack_user_id,display_name,role) values('T_TEST','U_PUBLICATION_EDITOR','Editor','media') returning *`;
+    const asActor = (m: typeof author) => ({id:m.id,slackUserId:m.slack_user_id,displayName:m.display_name,role:m.role,isActive:true});
+    const actor=asActor(author), media=asActor(editor);
+    const [report] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status,published_at)
+      values(${author.id},'2026-10-24','Consent','ロボット','進捗','Original','published',now()) returning id,version`;
+    const key=crypto.randomUUID();
+    const input={channels:['note' as const,'X' as const],otherChannel:'',message:'May we publish?',reportVersion:report.version};
+    await expect(createPublication(report.id,actor,input,key)).rejects.toMatchObject({status:403});
+    const first=await createPublication(report.id,media,input,key);
+    expect((await createPublication(report.id,media,input,key)).id).toBe(first.id);
+    await expect(createPublication(report.id,media,input,crypto.randomUUID())).rejects.toMatchObject({status:409});
+    expect((await sql`select * from publication_notifications where request_id=${key}`)).toHaveLength(1);
+    const before=state.postMessage.mock.calls.length;
+    state.postMessage.mockRejectedValueOnce(new Error('temporary'));
+    await processPublicationNotifications();
+    expect((await getPublication(key,actor)).notifications?.[0].status).toBe('failed');
+    await sql`update publication_notifications set available_at=now() where request_id=${key}`;
+    await processPublicationNotifications();
+    await processPublicationNotifications();
+    expect(state.postMessage.mock.calls.length-before).toBe(2);
+    const sent=state.postMessage.mock.calls.at(-1)![0];
+    expect(sent.channel).toBe('U_PUBLICATION_AUTHOR');
+    expect(sent.blocks.filter((block: {type:string})=>block.type==='actions')).toHaveLength(4);
+    expect((await getPublication(key,actor)).notifications?.[0].status).toBe('sent');
+    await expect(getPublication(key,{...actor,id:crypto.randomUUID()})).rejects.toMatchObject({status:404});
+    const reply=await actOnPublication(key,actor,{action:'respond',version:1,decision:'request_edit',body:'',note:'Remove names'});
+    await expect(actOnPublication(key,actor,{action:'respond',version:1,decision:'original',body:'',note:''})).rejects.toMatchObject({status:409});
+    expect(reply.status).toBe('awaiting_draft');
+    const draft=await actOnPublication(key,media,{action:'submit_draft',version:2,body:'Edited',url:'https://note.com/preview'});
+    expect(draft.status).toBe('awaiting_review');
+    const approved=await actOnPublication(key,actor,{action:'review',version:3,decision:'approve',note:'OK'});
+    expect(approved.status).toBe('approved');
+    expect(approved.sourceBody).toContain('Original');
+    expect(approved.draftBody).toBe('Edited');
+    expect((await listPublications(media,report.id))).toHaveLength(1);
+    const queued=await sql`select recipient_id from publication_notifications where request_id=${key} order by request_version`;
+    expect(queued.map(row=>row.recipient_id)).toEqual([author.id,editor.id,author.id,editor.id]);
+    await processPublicationNotifications();
+    expect(state.postMessage.mock.calls.at(-1)![0].channel).toBe('U_PUBLICATION_EDITOR');
+    await sql`delete from reports where id=${report.id}`;
+  });
 
   async function send(event: object) {
     const body = JSON.stringify({ type: "event_callback", team_id: "T_TEST", event });

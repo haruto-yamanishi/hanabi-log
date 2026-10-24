@@ -4,10 +4,11 @@ import { getDatabase } from "@/server/db/client";
 
 export interface SystemDmInput {
   dedupeKey: string;
-  kind: "like" | "contribution_nudge" | "announcement";
+  kind: "like" | "contribution_nudge" | "announcement" | "publication";
   recipientSlackUserId: string;
   recipientName: string;
   text: string;
+  blocks?: Extract<import("@slack/web-api").ChatPostMessageArguments, { blocks: unknown }>["blocks"];
   reportId?: string;
   reportTitle?: string;
 }
@@ -16,9 +17,9 @@ export interface SystemDmInput {
 export async function sendSystemDm(client: Pick<WebClient, "chat">, input: SystemDmInput) {
   const sql = getDatabase();
   const [claimed] = await sql`insert into system_dm_deliveries
-    (dedupe_key, kind, recipient_slack_user_id, recipient_name, report_id, report_title, message_text, status)
+    (dedupe_key, kind, recipient_slack_user_id, recipient_name, report_id, report_title, message_text, blocks, status)
     values (${input.dedupeKey}, ${input.kind}, ${input.recipientSlackUserId}, ${input.recipientName},
-      ${input.reportId ?? null}, ${input.reportTitle ?? null}, ${input.text}, 'processing')
+      ${input.reportId ?? null}, ${input.reportTitle ?? null}, ${input.text}, ${sql.json((input.blocks ?? []) as never)}, 'processing')
     on conflict (dedupe_key) do update set status = 'processing', attempted_at = now(), last_error = null
       where system_dm_deliveries.status = 'failed'
     returning *`;
@@ -33,7 +34,9 @@ export async function sendSystemDm(client: Pick<WebClient, "chat">, input: Syste
   try {
     message = await client.chat.postMessage({
       channel: claimed.recipient_slack_user_id,
-      text: claimed.message_text,
+      text: claimed.kind === "publication" ? claimed.message_text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").slice(0,39000) : claimed.message_text,
+      ...(claimed.kind === "publication" ? { mrkdwn: false, parse: "none" as const } : {}),
+      ...(claimed.blocks?.length ? { blocks: claimed.blocks } : {}),
       unfurl_links: false,
       unfurl_media: false,
     });

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useSyncExternalStore } from "react";
 import type { CurrentUser } from "@/lib/types";
-import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, HomeIcon, PlusIcon, SearchIcon, SettingsIcon, UserIcon } from "@/components/icons";
+import { ArrowLeftIcon, ArrowRightIcon, CalendarIcon, HomeIcon, ImageIcon, EditIcon, PlusIcon, SearchIcon, SettingsIcon, UserIcon } from "@/components/icons";
 import { HanabiMark } from "@/components/logo";
 import { Avatar } from "@/components/ui";
 
@@ -43,6 +43,8 @@ const navigation = [
   { href: "/", label: "ホーム", icon: HomeIcon, exact: true },
   { href: "/calendar", label: "カレンダー", icon: CalendarIcon, exact: false },
   { href: "/archive", label: "アーカイブ", icon: SearchIcon, exact: false },
+  { href: "/publication-requests", label: "掲載許可", icon: EditIcon, exact: false },
+  { href: "/media", label: "メディア", icon: ImageIcon, exact: false },
   { href: "/me", label: "マイページ", icon: UserIcon, exact: false },
 ] as const;
 
@@ -125,7 +127,7 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
           <Avatar name={user?.displayName || "Hanabiメンバー"} src={user?.avatarUrl} />
           <span>
             <strong>{user?.displayName || "Hanabiメンバー"}</strong>
-            <small>{user?.role === "admin" ? "Admin" : "Member"}</small>
+            <small>{user?.role === "admin" ? "Admin" : user?.role === "media" ? "Media" : "Member"}</small>
           </span>
         </Link>
       </aside>
@@ -156,6 +158,7 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
           <SearchIcon />
           <span>さがす</span>
         </Link>
+        <Link aria-current={isActive(pathname, "/media") ? "page" : undefined} href="/media"><ImageIcon /><span>メディア</span></Link>
         <Link aria-current={isActive(pathname, "/me") ? "page" : undefined} href="/me">
           <UserIcon />
           <span>マイページ</span>

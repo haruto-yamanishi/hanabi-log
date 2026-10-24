@@ -71,7 +71,7 @@ export function MyScreen() {
             <div className="profile-card__copy">
               <div>
                 <h2>{user?.displayName || "Hanabiメンバー"}</h2>
-                <span className="role-badge">{user?.role === "admin" ? "Admin" : "Member"}</span>
+                <span className="role-badge">{user?.role === "admin" ? "Admin" : user?.role === "media" ? "Media" : "Member"}</span>
                 {user ? <span className={`member-activity-badge member-activity-badge--${user.isActive ? "active" : "inactive"}`}>{user.isActive ? "Active" : "Inactive・公開承認制"}</span> : null}
               </div>
             </div>

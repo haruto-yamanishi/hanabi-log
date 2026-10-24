@@ -8,7 +8,7 @@ import type {
 } from "@/lib/constants";
 import type { MediaMimeType } from "@/lib/media";
 
-export type MemberRole = "member" | "admin";
+export type MemberRole = "member" | "media" | "admin";
 
 export interface Member {
   id: string;

@@ -83,7 +83,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
         ...binding,
         members: await repository.listMembers(),
       });
-      await rememberComments(id, comments);
+      await rememberComments(id, comments, true);
       if (comments.some(comment => comment.attachments?.length)) {
         const { importCommentAttachments } = await import("@/server/integrations/slack-file-import");
         await importCommentAttachments(id, comments, new URL(request.url).origin, false);

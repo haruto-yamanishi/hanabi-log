@@ -1,0 +1,34 @@
+import { expect, test } from "@playwright/test";
+import { openPage } from "./navigation";
+test.use({ serviceWorkers: "block" });
+test("写真とコメント動画を絞り込み、本文と日報投稿者へ移動できる", async ({ page }) => {
+  const reports = await (await page.request.get("/api/reports")).json();
+  const report = reports.reports[0];
+  const base = { reportId: report.id, title: report.title, reportDate: report.reportDate, authorId: report.authorId, authorName: report.author.displayName };
+  const photo = { ...base, id: "photo", source: "report", filename: "活動写真.png", mimeType: "image/png", url: "/brand/hanabi-normal.png?media=1" };
+  const video = { ...base, id: "video", source: "comment", commentId: "1800000000.1", filename: "reply.mp4", mimeType: "video/mp4", url: "/test-video.mp4?media=1" };
+  await page.route("**/api/media?*", route => {
+    const params = new URL(route.request().url()).searchParams;
+    const items = [photo, video].filter(item => (params.get("kind") === "all" || item.mimeType.startsWith(`${params.get("kind")}/`)) && (params.get("source") === "all" || item.source === params.get("source")));
+    return route.fulfill({ json: { items, nextCursor: null } });
+  });
+  await openPage(page, "/media");
+  await expect(page.getByRole("heading", { name: "メディア", exact: true })).toBeVisible();
+  await expect(page.locator(".media-card")).toHaveCount(2);
+  await expect(page.getByAltText("活動写真.png")).toBeVisible();
+  await expect(page.getByLabel("reply.mp4")).toHaveAttribute("controls", "");
+  await expect(page.getByRole("link", { name: "日報本文へ →" }).first()).toHaveAttribute("href", `/reports/${report.id}`);
+  await expect(page.getByRole("link", { name: `日報を書いた人：${report.author.displayName}` }).first()).toHaveAttribute("href", `/members/${report.authorId}`);
+  await page.getByLabel("種類", { exact: true }).selectOption("video");
+  await expect(page.locator(".media-card")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "コメントへ →" })).toHaveAttribute("href", `/reports/${report.id}#comments-heading`);
+  await page.getByLabel("添付先", { exact: true }).selectOption("report");
+  await expect(page.getByText("メディアはまだありません")).toBeVisible();
+  await page.getByLabel("種類", { exact: true }).selectOption("all");
+  await page.getByRole("link", { name: "日報本文へ →" }).click();
+  await expect(page).toHaveURL(`/reports/${report.id}`);
+  await openPage(page, "/media");
+  await page.getByRole("link", { name: `日報を書いた人：${report.author.displayName}` }).first().click();
+  await expect(page).toHaveURL(`/members/${report.authorId}`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

@@ -215,7 +215,7 @@ export function AdminScreen() {
         body: JSON.stringify({ role }),
       });
       setMembers((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setNotice(`${updated.displayName}さんの権限を${updated.role === "admin" ? "Admin" : "Member"}へ変更しました。`);
+      setNotice(`${updated.displayName}さんの権限を${updated.role === "admin" ? "Admin" : updated.role === "media" ? "Media" : "Member"}へ変更しました。`);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "権限を変更できませんでした");
     } finally {
@@ -439,6 +439,7 @@ export function AdminScreen() {
                         value={member.role}
                       >
                         <option disabled={member.id === user?.id} value="member">Member</option>
+                        <option disabled={member.id === user?.id} value="media">Media</option>
                         <option value="admin">Admin</option>
                       </select>
                     </label>
