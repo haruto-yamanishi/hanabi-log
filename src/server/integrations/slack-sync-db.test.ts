@@ -53,10 +53,37 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     for (const name of [
       "202608190001_hanabi_log", "202608200005_report_likes_and_weekly_digest",
       "202608200006_member_activity_and_report_approval", "202608210001_member_contribution_events",
-      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries", "202610230001_report_media_and_categories", "202610230003_comment_likes", "202610230004_usage_analytics", "202610230005_slack_video_uploads", "202610230006_media_gallery", "202610240001_publication_permissions",
+      "202608210002_log_ranking", "202609060001_slack_incoming_reports", "202609070001_slack_edits_and_reactions", "202609070002_like_notifications", "202609070003_like_notification_history", "202609070006_api_rate_limits", "202609070007_slack_incoming_retry_state", "202610160001_comment_reaction_likes", "202610170001_unavailable_reaction_threads", "202609070004_audit_events", "202610170002_system_dm_deliveries", "202610230001_report_media_and_categories", "202610230003_comment_likes", "202610230004_usage_analytics", "202610230005_slack_video_uploads", "202610230006_media_gallery", "202610240001_publication_permissions", "202610240002_member_role_notifications",
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
+
+  it("queues role changes atomically, mentions the acting admin, retries failures and skips unchanged roles", async () => {
+    const { processMemberRoleNotifications } = await import("./role-notifications");
+    const [admin] = await sql`insert into members(slack_team_id,slack_user_id,display_name,role) values('T_TEST','UADMIN123','担当Admin','admin') returning *`;
+    const [member] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','UMEMBER123','担当Media') returning *`;
+    const actor = { id: admin.id, slackUserId: admin.slack_user_id, displayName: admin.display_name };
+    const repository = new PostgresReportRepository();
+    state.postMessage.mockClear();
+    await repository.setMemberRole(member.id, 'media', actor);
+    await repository.setMemberRole(member.id, 'media', actor);
+    expect(await sql`select id from member_role_notifications where member_id=${member.id}`).toHaveLength(1);
+    state.postMessage.mockRejectedValueOnce(new Error('Slack unavailable'));
+    await processMemberRoleNotifications();
+    expect((await sql`select delivered_at from member_role_notifications where member_id=${member.id}`)[0].delivered_at).toBeNull();
+    await sql`update member_role_notifications set available_at=now() where member_id=${member.id}`;
+    await processMemberRoleNotifications();
+    expect(state.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({channel:'UMEMBER123',text:expect.stringContaining('admin <@UADMIN123>（担当Admin）')}));
+    await processMemberRoleNotifications();
+    expect(state.postMessage).toHaveBeenCalledTimes(2);
+    for (const role of ['admin', 'member'] as const) {
+      await repository.setMemberRole(member.id, role, actor);
+      await processMemberRoleNotifications();
+      expect(state.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({text:expect.stringContaining(role === 'admin' ? 'admin権限が付与' : 'memberに変更')}));
+    }
+    expect(await sql`select id from member_role_notifications where member_id=${member.id} and delivered_at is not null`).toHaveLength(3);
+    state.postMessage.mockClear();
+  });
 
   it("lists report and comment media without leaking drafts, and removes deleted reply media", async () => {
     const { rememberComments } = await import("./comment-likes");

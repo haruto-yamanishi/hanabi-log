@@ -11,6 +11,7 @@ import { processPendingJobs } from "@/server/integrations/outbox";
 import { processIncomingSlackReports } from "@/server/integrations/slack-incoming-store";
 
 import { processLikeNotifications } from "@/server/integrations/like-notifications";
+import { processMemberRoleNotifications } from "@/server/integrations/role-notifications";
 import { cleanupOperationalData } from "@/server/maintenance/retention";
 
 function authorized(request: Request): boolean {
@@ -31,6 +32,7 @@ export async function POST(request: Request): Promise<Response> {
     await processIncomingSlackReports();
     await syncCommentMedia();
     await processPublicationNotifications();
+    await processMemberRoleNotifications();
     await processLikeNotifications();
     const result = await processPendingJobs();
     const cleanup = await cleanupOperationalData();

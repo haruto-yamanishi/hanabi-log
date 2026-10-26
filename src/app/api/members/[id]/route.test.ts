@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser, Member } from "@/lib/types";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("@/server/integrations/role-notifications", () => ({ processMemberRoleNotifications: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
@@ -79,7 +81,7 @@ describe("PATCH /api/members/:id", () => {
     mocks.setMemberRole.mockResolvedValue({...target,role:'media'});
     const result=await PATCH(request('media'),context());
     expect(result.status).toBe(200);
-    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id,'media');
+    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id,'media',admin);
     expect((await PATCH(request('media'),context(admin.id))).status).toBe(409);
   });
 
@@ -95,7 +97,7 @@ describe("PATCH /api/members/:id", () => {
     const response = await PATCH(request("admin"), context());
 
     expect(response.status).toBe(200);
-    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id, "admin");
+    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id, "admin", admin);
     await expect(response.json()).resolves.toEqual({
       id: target.id,
       displayName: target.displayName,

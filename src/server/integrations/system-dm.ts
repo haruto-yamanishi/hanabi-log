@@ -4,7 +4,7 @@ import { getDatabase } from "@/server/db/client";
 
 export interface SystemDmInput {
   dedupeKey: string;
-  kind: "like" | "contribution_nudge" | "announcement" | "publication";
+  kind: "like" | "contribution_nudge" | "announcement" | "publication" | "role_change";
   recipientSlackUserId: string;
   recipientName: string;
   text: string;

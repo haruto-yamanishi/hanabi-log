@@ -5,6 +5,10 @@ export const metadata: Metadata = { title: "パッチノート・クレジット
 export default function UpdatesPage() {
   return <div className="page updates-page">
     <PageHeader title="パッチノート・クレジット" description="Hanabi Logの更新情報と、この場所をつくる人たち。" />
+    <section className="admin-panel"><p className="release-date">2026年10月26日 · 権限変更の通知</p><h2>権限変更をSlack DMでお知らせ</h2><ul>
+      <li>Admin・Media・Memberへの権限変更を本人へ通知します。変更したAdminをSlackメンションで表示します。</li>
+      <li>Mediaに指定された方へ、掲載許可・校正確認・メディア一覧の使い方も案内します。</li>
+    </ul></section>
     <section className="admin-panel" aria-labelledby="publication-release"><p className="release-date">2026年10月24日 · メディア一覧・掲載許可</p><h2 id="publication-release">活動の記録を見つけ、本人の許可を得て発信する</h2><ul>
       <li>日報とコメントの写真・動画をまとめた「メディア」ページを追加。種類や添付先で絞り込み、日報本文と投稿者のプロフィールへ移動できます。</li>
       <li>ブランディング担当向けにMedia権限を追加。Adminも同じ掲載依頼の操作ができます。</li>

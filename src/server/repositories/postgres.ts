@@ -463,16 +463,25 @@ export class PostgresReportRepository implements ReportRepository {
     return rows.sort((left, right) => left.ranking.rank - right.ranking.rank);
   }
 
-  async setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null> {
-    const rows = await this.sql<MemberRow[]>`
-      update members
-      set role = ${role},
+  async setMemberRole(memberId: string, role: Member["role"], actor?: Pick<CurrentUser, "id" | "slackUserId" | "displayName">): Promise<Member | null> {
+    return this.sql.begin(async (rawTx) => {
+      const tx = rawTx as Transaction;
+      const [existing] = await tx<MemberRow[]>`select * from members where id = ${memberId} for update`;
+      if (!existing) return null;
+      if (existing.role === role) return mapMember(existing);
+      const [updated] = await tx<MemberRow[]>`
+        update members set role = ${role},
           is_active = case when ${role} = 'admin' then true else is_active end,
           updated_at = now()
-      where id = ${memberId}
-      returning *
-    `;
-    return rows[0] ? mapMember(rows[0]) : null;
+        where id = ${memberId} returning *
+      `;
+      if (actor) {
+        await tx`insert into member_role_notifications
+          (member_id, actor_id, actor_name, actor_slack_user_id, role)
+          values (${memberId}, ${actor.id}, ${actor.displayName}, ${actor.slackUserId}, ${role})`;
+      }
+      return mapMember(updated);
+    });
   }
 
   async setMemberActivity(memberId: string, isActive: boolean): Promise<Member | null> {
