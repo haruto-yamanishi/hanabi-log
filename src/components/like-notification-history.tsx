@@ -30,10 +30,19 @@ export function LikeNotificationHistoryPanel() {
     return () => { window.clearTimeout(timeout); controller.abort(); };
   }, [load]);
 
+  const needsAttention = items.filter(item => item.status === "failed" || item.status === "unknown").length;
+
   return (
-    <section aria-labelledby="dm-history-heading">
+    <details className="dm-history">
+      <summary className="dm-history__summary">
+        <span id="dm-history-heading">システムのDM送信履歴</span>
+        <span className="dm-history__count">{loading ? "読み込み中…" : `最新${items.length}件`}</span>
+        {needsAttention ? <span className="status-badge status-badge--error">要確認 {needsAttention}件</span> : null}
+        {error ? <span className="status-badge status-badge--error">取得失敗</span> : null}
+      </summary>
+      <div className="dm-history__content">
       <div className="admin-panel__heading">
-        <div><h2 id="dm-history-heading">システムのDM送信履歴</h2><p>いいね通知・活動リマインド・お知らせをまとめて最新100件表示します。</p></div>
+        <p>いいね・活動リマインド・掲載許可・権限変更など、最新100件を表示します。</p>
         <button className="button button--secondary button--small" disabled={loading} onClick={() => void load()} type="button">{loading ? "読み込み中…" : "履歴を更新"}</button>
       </div>
       {error ? <p role="alert">{error}</p> : null}
@@ -46,10 +55,10 @@ export function LikeNotificationHistoryPanel() {
               <small>Slack ID: {item.recipientSlackUserId}{!item.recipientRecorded ? "（現在の登録情報・送信時の宛先記録なし）" : ""}</small>
               <span>{{ like: "いいね通知", contribution_nudge: "活動リマインド", announcement: "お知らせ", publication: "掲載許可", role_change: "権限変更" }[item.kind]}</span>
               {item.reportId ? <Link href={`/reports/${item.reportId}`} prefetch={false}>{slackDisplayText(item.reportTitle ?? "日報を見る")}</Link> : null}
-              {item.messageText ? <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", font: "inherit" }}>{item.messageText.split(/(<https?:\/\/[^<>]+>)/g).map((part, index) => {
+              {item.messageText ? <details className="dm-history__message"><summary>送信本文を表示</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", font: "inherit" }}>{item.messageText.split(/(<https?:\/\/[^<>]+>)/g).map((part, index) => {
                   const link = /^<(https?:\/\/[^<>|]+)(?:\|([^<>]*))?>$/.exec(part);
                   return link ? <a key={index} href={slackDisplayText(link[1])} target="_blank" rel="noopener noreferrer">{slackDisplayText(link[2] ?? link[1])}</a> : slackDisplayText(part);
-                })}</pre>
+                })}</pre></details>
                 : <p>{item.status === "sent" ? "この通知は本文の記録開始前に送信されたため、送信内容は保存されていません。" : "送信内容は送信処理の開始時に記録されます。"}</p>}
               {item.sentAt ? <small>送信日時：{formatDateTime(item.sentAt)}</small> : item.attemptedAt ? <small>最終試行：{formatDateTime(item.attemptedAt)}</small> : null}
               {item.error ? <p>エラー：{item.error}</p> : null}
@@ -57,6 +66,7 @@ export function LikeNotificationHistoryPanel() {
           </article>
         ))}
       </div>
-    </section>
+      </div>
+    </details>
   );
 }

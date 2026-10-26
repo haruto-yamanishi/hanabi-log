@@ -342,6 +342,30 @@ export function AdminScreen() {
 
           {tab === "sync" ? (
             <section aria-labelledby="sync-heading" className="admin-panel">
+              <div className="admin-panel__heading"><div><h2 id="sync-heading">失敗した同期</h2><p>日報は公開されたままです。外部サービスへの配信だけを再試行します。</p></div></div>
+              {issues.length ? (
+                <div className="sync-list">
+                  {issues.map((issue) => {
+                    const key = `${issue.report.id}-${issue.target}`;
+                    return (
+                      <article className="sync-issue" key={key}>
+                        <span className={`integration-logo integration-logo--${issue.target}`}>{issue.target === "slack" ? "S" : "N"}</span>
+                        <div className="sync-issue__body">
+                          <div className="sync-issue__title">
+                            <span className="status-badge status-badge--error">{issue.status === "dead" ? "手動対応" : issue.status === "partial" ? "一部失敗" : "失敗"}</span>
+                            <span>{issue.target === "slack" ? "Slack配信" : "Notion同期"}</span>
+                          </div>
+                          <Link href={`/reports/${issue.report.id}`} prefetch={false}>{issue.report.title}<ArrowRightIcon /></Link>
+                          <p>{issue.error || "外部サービスからエラーが返されました"}</p>
+                          <small>更新 {formatDateTime(issue.report.integration?.updatedAt || issue.report.updatedAt)}</small>
+                        </div>
+                        <button className="button button--secondary button--small" disabled={retrying === key} onClick={() => void retry(issue)} type="button"><RefreshIcon />{retrying === key ? "再試行中…" : "再試行"}</button>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : <EmptyState message="SlackとNotionへの配信は正常です。手動対応が必要な日報はありません。" title="すべて正常に同期されています" />}
+              <div className="sync-secondary">
               <div className="integration-connection-card">
                 <div className="integration-connection-card__copy">
                   <strong>Slackの過去スタンプ</strong>
@@ -374,30 +398,8 @@ export function AdminScreen() {
                   </div>
                 )}
               </div>
-              <LikeNotificationHistoryPanel />
-              <div className="admin-panel__heading"><div><h2 id="sync-heading">失敗した同期</h2><p>日報は公開されたままです。外部サービスへの配信だけを再試行します。</p></div></div>
-              {issues.length ? (
-                <div className="sync-list">
-                  {issues.map((issue) => {
-                    const key = `${issue.report.id}-${issue.target}`;
-                    return (
-                      <article className="sync-issue" key={key}>
-                        <span className={`integration-logo integration-logo--${issue.target}`}>{issue.target === "slack" ? "S" : "N"}</span>
-                        <div className="sync-issue__body">
-                          <div className="sync-issue__title">
-                            <span className="status-badge status-badge--error">{issue.status === "dead" ? "手動対応" : issue.status === "partial" ? "一部失敗" : "失敗"}</span>
-                            <span>{issue.target === "slack" ? "Slack配信" : "Notion同期"}</span>
-                          </div>
-                          <Link href={`/reports/${issue.report.id}`} prefetch={false}>{issue.report.title}<ArrowRightIcon /></Link>
-                          <p>{issue.error || "外部サービスからエラーが返されました"}</p>
-                          <small>更新 {formatDateTime(issue.report.integration?.updatedAt || issue.report.updatedAt)}</small>
-                        </div>
-                        <button className="button button--secondary button--small" disabled={retrying === key} onClick={() => void retry(issue)} type="button"><RefreshIcon />{retrying === key ? "再試行中…" : "再試行"}</button>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : <EmptyState message="SlackとNotionへの配信は正常です。手動対応が必要な日報はありません。" title="すべて正常に同期されています" />}
+                <LikeNotificationHistoryPanel />
+              </div>
             </section>
           ) : null}
 

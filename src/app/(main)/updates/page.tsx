@@ -5,6 +5,10 @@ export const metadata: Metadata = { title: "パッチノート・クレジット
 export default function UpdatesPage() {
   return <div className="page updates-page">
     <PageHeader title="パッチノート・クレジット" description="Hanabi Logの更新情報と、この場所をつくる人たち。" />
+    <section className="admin-panel"><p className="release-date">2026年10月26日 · 同期管理の見やすさ</p><h2>失敗した同期を先に確認</h2><ul>
+      <li>同期管理の先頭に失敗した同期を表示。DM送信履歴は初期状態で折りたたみ、必要なときに開けるようにしました。</li>
+      <li>DM本文も個別に開けます。履歴を閉じた状態でも、送信失敗・結果不明の件数を確認できます。</li>
+    </ul></section>
     <section className="admin-panel"><p className="release-date">2026年10月26日 · Slackでの掲載確認</p><h2>掲載許可のやり取りをSlack内で</h2><ul>
       <li>掲載依頼のDMから、原文の確認・許可・校正内容の入力・拒否をSlack内で行えます。</li>
       <li>担当者の本文と確認用URLの送付、本人の最終承認や修正依頼もSlackで完結。Webにも同じ履歴が反映されます。</li>
