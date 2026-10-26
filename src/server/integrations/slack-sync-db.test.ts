@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // Opt in with an empty LOCAL PostgreSQL database; never uses DATABASE_URL.
 const state = vi.hoisted(() => ({ after: [] as (() => Promise<void>)[], sql: undefined as unknown,
   fileUpload: vi.fn(), fileInfo: vi.fn(), fileComplete: vi.fn(), fileDelete: vi.fn(),
+  viewsOpen: vi.fn().mockResolvedValue({ok:true,view:{id:'V_PUBLICATION',hash:'hash'}}), viewsUpdate: vi.fn().mockResolvedValue({ok:true}),
   replies: vi.fn(), reactions: vi.fn(), postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "123.456" }),
 }));
 vi.mock("server-only", () => ({}));
@@ -20,6 +21,7 @@ vi.mock("@slack/web-api", () => ({ WebClient: class {
   reactions = { get: state.reactions };
   conversations = { replies: state.replies };
   chat = { postMessage: state.postMessage };
+  views = { open: state.viewsOpen, update: state.viewsUpdate };
   users = { info: async ({ user }: { user: string }) => ({ user: { name: user, profile: {} } }) };
 } }));
 
@@ -57,6 +59,56 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     ]) await sql.unsafe(await readFile(`supabase/migrations/${name}.sql`, "utf8"));
   });
   afterAll(async () => { if (sql) await sql.end(); });
+
+  it("handles signed Slack-only consent, correction and final approval with current member permissions", async () => {
+    const { POST: interact } = await import("@/app/api/integrations/slack/interactions/route");
+    const { createPublication, getPublication } = await import("@/server/publication");
+    const [author] = await sql`insert into members(slack_team_id,slack_user_id,display_name) values('T_TEST','U_MODAL_AUTHOR','Author') returning *`;
+    const [editor] = await sql`insert into members(slack_team_id,slack_user_id,display_name,role) values('T_TEST','U_MODAL_EDITOR','Editor','media') returning *`;
+    const actor = {id:author.id,slackUserId:author.slack_user_id,displayName:'Author',role:'member' as const,isActive:true};
+    const media = {...actor,id:editor.id,slackUserId:editor.slack_user_id,role:'media' as const};
+    const [report] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status,published_at)
+      values(${author.id},'2026-10-26','Slack consent','ロボット','進捗','Original','published',now()) returning id,version`;
+    const item = await createPublication(report.id,media,{channels:['note'],otherChannel:'',message:'',reportVersion:report.version},crypto.randomUUID());
+    async function sendInteraction(payload: object, signatureValid = true) {
+      const body = new URLSearchParams({payload:JSON.stringify(payload)}).toString();
+      const timestamp=String(Math.floor(Date.now()/1000));
+      const signature=`v0=${createHmac('sha256','secret').update(`v0:${timestamp}:${body}`).digest('hex')}`;
+      return interact(new Request('https://hanabi.test/api/integrations/slack/interactions',{method:'POST',body,headers:{'x-slack-request-timestamp':timestamp,'x-slack-signature':signatureValid?signature:'bad'}}));
+    }
+    const click = {type:'block_actions',team:{id:'T_TEST'},user:{id:author.slack_user_id},trigger_id:'trigger',actions:[{action_id:'publication_open',value:JSON.stringify({id:item.id,intent:'request_edit'})}]};
+    expect((await sendInteraction(click,false)).status).toBe(401);
+    expect((await sendInteraction({...click,team:{id:'T_OTHER'}})).status).toBe(403);
+    expect((await sendInteraction(click)).status).toBe(200);
+    expect(state.viewsOpen).toHaveBeenCalled();
+    for (const callback of state.after.splice(0)) await callback();
+    expect(state.viewsUpdate).toHaveBeenLastCalledWith(expect.objectContaining({view:expect.objectContaining({callback_id:'publication_submit',submit:{type:'plain_text',text:'送信'}})}));
+    const submit = (user: string, version: number, intent: string, fields: Record<string,string>) => sendInteraction({type:'view_submission',team:{id:'T_TEST'},user:{id:user},view:{id:'V_PUBLICATION',callback_id:'publication_submit',private_metadata:JSON.stringify({id:item.id,version,intent,bodyParts:1}),state:{values:Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,{value:{value}}]))}}});
+    // A registered editor cannot forge an author's submission.
+    const denied = await submit(editor.slack_user_id,1,'original',{});
+    expect(JSON.stringify(await denied.json())).toContain('本人だけ');
+    expect((await getPublication(item.id,actor)).version).toBe(1);
+    expect((await (await submit(author.slack_user_id,1,'request_edit',{note_0:'Hide names'})).json()).response_action).toBe('update');
+    expect((await getPublication(item.id,actor)).correctionNote).toBe('Hide names');
+    const invalid = await (await submit(editor.slack_user_id,2,'submit_draft',{body_0:'Edited',url:'javascript:alert(1)'})).json();
+    expect(invalid.response_action).toBe('errors'); expect(invalid.errors.url).toBeDefined();
+    // Role changes are checked against the database on every submission.
+    await sql`update members set role='member' where id=${editor.id}`;
+    expect((await (await submit(editor.slack_user_id,2,'submit_draft',{body_0:'Edited',url:'https://note.com/preview'})).json()).response_action).toBe('errors');
+    await sql`update members set role='media' where id=${editor.id}`;
+    await submit(editor.slack_user_id,2,'submit_draft',{body_0:'Edited',url:'https://note.com/preview'});
+    await submit(author.slack_user_id,3,'revise',{note_0:'One more edit'});
+    await submit(editor.slack_user_id,4,'submit_draft',{body_0:'Final',url:'https://note.com/final'});
+    await submit(author.slack_user_id,5,'approve',{});
+    await submit(author.slack_user_id,5,'approve',{}); // Retry must not write a second consent or notification.
+    const final = await getPublication(item.id,actor);
+    expect(final).toMatchObject({version:6,status:'approved',draftBody:'Final',draftUrl:'https://note.com/final'});
+    expect(await sql`select id from publication_notifications where request_id=${item.id}`).toHaveLength(6);
+    for (const callback of state.after.splice(0)) await callback();
+    expect((await getPublication(item.id,actor)).notifications?.[0].status).toBe('sent');
+    await sql`delete from reports where id=${report.id}`;
+    state.postMessage.mockClear();
+  });
 
   it("queues role changes atomically, mentions the acting admin, retries failures and skips unchanged roles", async () => {
     const { processMemberRoleNotifications } = await import("./role-notifications");

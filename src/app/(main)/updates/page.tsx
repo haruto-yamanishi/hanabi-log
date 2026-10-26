@@ -5,6 +5,10 @@ export const metadata: Metadata = { title: "パッチノート・クレジット
 export default function UpdatesPage() {
   return <div className="page updates-page">
     <PageHeader title="パッチノート・クレジット" description="Hanabi Logの更新情報と、この場所をつくる人たち。" />
+    <section className="admin-panel"><p className="release-date">2026年10月26日 · Slackでの掲載確認</p><h2>掲載許可のやり取りをSlack内で</h2><ul>
+      <li>掲載依頼のDMから、原文の確認・許可・校正内容の入力・拒否をSlack内で行えます。</li>
+      <li>担当者の本文と確認用URLの送付、本人の最終承認や修正依頼もSlackで完結。Webにも同じ履歴が反映されます。</li>
+    </ul></section>
     <section className="admin-panel"><p className="release-date">2026年10月26日 · 権限変更の通知</p><h2>権限変更をSlack DMでお知らせ</h2><ul>
       <li>Admin・Media・Memberへの権限変更を本人へ通知します。変更したAdminをSlackメンションで表示します。</li>
       <li>Mediaに指定された方へ、掲載許可・校正確認・メディア一覧の使い方も案内します。</li>

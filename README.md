@@ -342,7 +342,9 @@ DEMO_MODE=false APP_BASE_URL=https://log.9494hanabi.com node --env-file=.env.loc
 
 `202610240001_publication_permissions.sql` を適用してからデプロイします。Adminは管理画面でメンバーに `media` 権限を割り当てられます。Mediaは他人の日報の編集・承認・管理権限を持たず、掲載依頼と自分の依頼に対する校正原稿の送付ができます。Adminは同じ機能を利用できますが、日報投稿者の代わりに掲載を許可することはできません。
 
-日報詳細から掲載先を複数選択して依頼すると、本文・添付名と日報の版を保存します。Slack DMの4つのボタンはログインが必要な回答画面を開き、本人が送信して初めて返事が確定します。リンクを開いただけでは承認されません。SlackのInteractivity設定追加は不要です。
+日報詳細から掲載先を複数選択して依頼すると、本文・添付名と日報の版を保存します。Slack DMのボタンからSlack内のモーダルを開き、掲載許可・校正指示・本文とURLの提出・最終承認・修正依頼・拒否まで操作できます。本人がモーダルの「送信」を押して初めて確定します。署名・ワークスペース・現在のメンバー権限・依頼の版を検証し、Webと同じ状態遷移と履歴を利用します。
+
+Slackアプリの **Interactivity & Shortcuts** をOnにし、Request URLに `https://log.9494hanabi.com/api/integrations/slack/interactions` を設定します。`SLACK_SIGNING_SECRET` と既存のBotトークンを使用し、追加OAuthスコープは不要です。既存DMのリンクボタンは `node --env-file=.env.local --import tsx scripts/upgrade-publication-slack-buttons.ts --apply` で同じメッセージ上のSlack操作ボタンへ変更できます（`--apply` なしは件数確認のみ）。
 
 原文のまま許可された場合は依頼時の原文が対象です。自分で校正・校正依頼の場合は条件付きの許可として、担当者が本文と確認用URLを提出し、本人が最終確認します。修正依頼・再提出・拒否も記録します。外部メディアへの自動投稿は行いません。確認URLには公開前の共有プレビュー等を利用してください。
 
