@@ -1,3 +1,4 @@
+import { processMentionNotifications } from "@/server/integrations/mention-notifications";
 export const maxDuration = 300;
 import { replyThread } from "@/server/integrations/slack-reply-event";
 import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
@@ -75,6 +76,7 @@ export async function POST(request: Request): Promise<Response> {
     after(async () => {
       try {
         await processIncomingSlackReports();
+        await processMentionNotifications();
         await syncCommentMedia();
         await processLikeNotifications();
         await processPendingJobs();

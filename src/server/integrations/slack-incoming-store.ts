@@ -1,3 +1,5 @@
+import { displayMentions } from "@/lib/text";
+import { createSlackMentionResolver, normalizeImportedMentions } from "@/server/integrations/slack-mention-names";
 import "server-only";
 import { WebClient } from "@slack/web-api";
 import { getDatabase } from "@/server/db/client";
@@ -21,6 +23,7 @@ export async function processIncomingSlackReports(): Promise<void> {
         order by available_at, created_at limit 20`
     : await sql`select * from slack_incoming_reports where processed_at is null order by created_at limit 20`;
 
+  const resolveMention = createSlackMentionResolver(client);
   for (const candidate of pending) {
     try {
       const existing = await sql`select id from members where slack_team_id = ${env.SLACK_TEAM_ID} and slack_user_id = ${candidate.user_id}`;
@@ -34,6 +37,7 @@ export async function processIncomingSlackReports(): Promise<void> {
         continue;
       }
 
+      const normalizedBody = await normalizeImportedMentions(candidate.body, resolveMention);
       await sql.begin(async (tx) => {
         const [message] = retryEnabled
           ? await tx`select * from slack_incoming_reports
@@ -44,13 +48,13 @@ export async function processIncomingSlackReports(): Promise<void> {
               where channel_id = ${candidate.channel_id} and message_ts = ${candidate.message_ts}
                 and processed_at is null
               for update skip locked`;
-        if (!message) return;
+        if (!message || message.body !== candidate.body) return;
 
-        const body = message.body.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+        const body = normalizedBody.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
         if (message.imported) {
           if (message.report_id) {
             const [report] = await tx`update reports set activity_text = ${body},
-              summary = ${Array.from(body).slice(0, 100).join("")}, version = version + 1, updated_at = now()
+              summary = ${Array.from(displayMentions(body)).slice(0, 100).join("")}, version = version + 1, updated_at = now()
               where id = ${message.report_id} and activity_text is distinct from ${body}
               returning id, status, version`;
             if (report && ["published", "archived"].includes(report.status)) {
@@ -81,7 +85,7 @@ export async function processIncomingSlackReports(): Promise<void> {
         const occurredAt = new Date(Number(message.message_ts) * 1000);
         const reportDate = toHanabiReportDate(occurredAt);
         const [report] = await tx`insert into reports (author_id, report_date, title, summary, activity_area, content_category, activity_text, status, published_at)
-          values (${member.id}, ${reportDate}, ${resolveReportTitle("", member.display_name)}, ${Array.from(body).slice(0, 100).join("")}, 'その他', '進捗', ${body}, ${published ? "published" : "pending_approval"}, ${published ? occurredAt : null}) returning id`;
+          values (${member.id}, ${reportDate}, ${resolveReportTitle("", member.display_name)}, ${Array.from(displayMentions(body)).slice(0, 100).join("")}, 'その他', '進捗', ${body}, ${published ? "published" : "pending_approval"}, ${published ? occurredAt : null}) returning id`;
         const permalink = `https://app.slack.com/archives/${message.channel_id}/p${message.message_ts.replace(".", "")}`;
         await tx`insert into integration_bindings (report_id, slack_channel_id, slack_message_ts, slack_permalink, slack_source_message, slack_status)
           values (${report.id}, ${message.channel_id}, ${message.message_ts}, ${permalink}, true, 'delivered')`;

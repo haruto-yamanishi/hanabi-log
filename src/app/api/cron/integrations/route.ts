@@ -1,3 +1,4 @@
+import { processMentionNotifications } from "@/server/integrations/mention-notifications";
 import { processPublicationNotifications } from "@/server/publication";
 import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
 export const maxDuration = 300;
@@ -30,6 +31,7 @@ export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     if (!authorized(request)) throw new AppError("UNAUTHORIZED", "Cron認証に失敗しました", 401);
     await processIncomingSlackReports();
+    await processMentionNotifications();
     await syncCommentMedia();
     await processPublicationNotifications();
     await processMemberRoleNotifications();

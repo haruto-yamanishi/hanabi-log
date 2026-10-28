@@ -1,6 +1,8 @@
+import { WebClient } from "@slack/web-api";
+import { createSlackMentionResolver } from "@/server/integrations/slack-mention-names";
 import "server-only";
 import { getDatabase } from "@/server/db/client";
-import { isDemoMode } from "@/server/env";
+import { env, isDemoMode } from "@/server/env";
 import type { SystemDmHistory } from "@/lib/system-dm-history";
 
 export async function listSystemDmHistory(): Promise<SystemDmHistory[]> {
@@ -55,6 +57,14 @@ export async function listSystemDmHistory(): Promise<SystemDmHistory[]> {
       union all select * from legacy_likes
       union all select * from legacy_nudges
     ) select * from history order by sort_at desc nulls last, id limit 100`;
+  const resolveName = env.SLACK_BOT_TOKEN ? createSlackMentionResolver(new WebClient(env.SLACK_BOT_TOKEN, {
+    retryConfig: { retries: 0 }, rejectRateLimitedCalls: true, timeout: 5000,
+  })) : null;
+  for (const row of rows) {
+    if (resolveName && (!row.recipient_name || row.recipient_name === row.recipient_slack_user_id)) {
+      row.recipient_name = await resolveName(row.recipient_slack_user_id) ?? row.recipient_name;
+    }
+  }
   const iso = (value: Date | null) => value?.toISOString() ?? null;
   return rows.map(row => ({
     id: row.id, kind: row.kind, reportId: row.report_id, reportTitle: row.report_title,

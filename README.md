@@ -349,3 +349,19 @@ Slackアプリの **Interactivity & Shortcuts** をOnにし、Request URLに `ht
 原文のまま許可された場合は依頼時の原文が対象です。自分で校正・校正依頼の場合は条件付きの許可として、担当者が本文と確認用URLを提出し、本人が最終確認します。修正依頼・再提出・拒否も記録します。外部メディアへの自動投稿は行いません。確認URLには公開前の共有プレビュー等を利用してください。
 
 依頼・返信とDM送信予約を同じDBトランザクションで保存します。DMはレスポンス後と既存cronで処理し、送信失敗は5分間隔で最大8回試行します。Slackが受け付けたか不明な送信を二重送信しない既存の仕組みも使用します。送信状態・本文・宛先は管理画面のDM履歴で確認できます。
+
+### メンションのSlack DM通知
+
+`202610280001_mention_notifications.sql` を適用してデプロイします。公開日報のタイトル・要約・本文各欄の個人／グループメンションをDBで予約し、公開・承認・編集・Slack取り込み後にDMします。下書き・承認待ちは公開後のみ対象です。グループは初回処理時の所属メンバーを保存し、個人メンションとの重複も含め、同じ日報・同じ宛先には1回だけ送ります。削除・再追加しても再送しません。
+
+既存の公開日報もマイグレーションで予約されます。`chat:write` とグループ用の `usergroups:read` を使用します（[Slack公式仕様](https://docs.slack.dev/reference/methods/usergroups.users.list/)）。送信失敗は5分後以降の既存cronで最大8回試行します。非公開化した日報は送信を保留します。送信履歴は管理画面の「お知らせ」に表示され、予約・グループ取得の失敗は `report_mention_notifications.last_error` で確認できます。
+
+既存分を即時送信するには、次を実行します（`--apply` なしは対象件数の確認のみ）。
+
+```bash
+DEMO_MODE=false APP_BASE_URL=https://log.9494hanabi.com node --env-file=.env.local --conditions=react-server --import tsx scripts/send-mention-notifications.ts --apply
+```
+
+専用の空のローカルDBでの検証: `MENTION_TEST_DATABASE_URL=postgres://USER@127.0.0.1:PORT/EMPTY_DB npm test -- src/server/integrations/mention-notifications.test.ts`。
+
+Slack取り込み時は個人・グループの名前を解決してID付きメンショントークンに保存します。画面と要約には名前を表示し、編集後もメンション先のIDを維持します。DM履歴も宛先名を保存します。既存のID表示を修復する場合は `scripts/repair-slack-mention-names.ts` を同じ実行環境で実行し、件数確認後に `--apply` を付けます。名前と本文の表示のみを修復し、DM送信は行いません。

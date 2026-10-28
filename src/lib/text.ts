@@ -1,5 +1,5 @@
 export function plainText(value: string): string {
-  return value
+  return displayMentions(value)
     .replace(/<[^>]*>/g, " ")
     .replace(/[`*_>#\[\]()~-]/g, " ")
     .replace(/\s+/g, " ")
