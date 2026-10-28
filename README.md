@@ -365,3 +365,5 @@ DEMO_MODE=false APP_BASE_URL=https://log.9494hanabi.com node --env-file=.env.loc
 専用の空のローカルDBでの検証: `MENTION_TEST_DATABASE_URL=postgres://USER@127.0.0.1:PORT/EMPTY_DB npm test -- src/server/integrations/mention-notifications.test.ts`。
 
 Slack取り込み時は個人・グループの名前を解決してID付きメンショントークンに保存します。画面と要約には名前を表示し、編集後もメンション先のIDを維持します。DM履歴も宛先名を保存します。既存のID表示を修復する場合は `scripts/repair-slack-mention-names.ts` を同じ実行環境で実行し、件数確認後に `--apply` を付けます。名前と本文の表示のみを修復し、DM送信は行いません。
+
+メンションDMにはWeb版に加え、当該日報のSlackスレッドへのリンクを表示します。Slack投稿IDが保存されるまでは通知予約を保持し、投稿処理後に送信します。未参加で開けない場合の参加・招待依頼の案内も併記します。スレッドURLは保存済みの投稿IDと[Slackのパーマリンク形式](https://docs.slack.dev/reference/methods/chat.getPermalink/)に基づきます。既存のDMには `scripts/add-mention-thread-links.ts --apply` で同じメッセージを編集して追記でき、再送はしません（`--apply` なしは対象数のみ）。

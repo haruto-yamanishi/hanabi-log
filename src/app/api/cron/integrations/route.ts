@@ -31,12 +31,12 @@ export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     if (!authorized(request)) throw new AppError("UNAUTHORIZED", "Cron認証に失敗しました", 401);
     await processIncomingSlackReports();
-    await processMentionNotifications();
     await syncCommentMedia();
     await processPublicationNotifications();
     await processMemberRoleNotifications();
     await processLikeNotifications();
     const result = await processPendingJobs();
+    await processMentionNotifications();
     const cleanup = await cleanupOperationalData();
     return Response.json({ ...result, cleanup }, { headers: { "Cache-Control": "no-store" } });
   });

@@ -4,17 +4,12 @@ import { after } from "next/server";
 import { processReportJobs } from "@/server/integrations/outbox";
 import { processMentionNotifications } from "@/server/integrations/mention-notifications";
 
-/** Start independent deliveries after the response; durable jobs remain for cron retries. */
+/** Publish first so the DM can link to the actual Slack thread. */
 export function scheduleReportJobs(reportId: string): void {
   after(async () => {
-    const results = await Promise.allSettled([
-      processReportJobs(reportId),
-      processMentionNotifications(reportId),
-    ]);
-    results.forEach((result, index) => {
-      if (result.status === "rejected") console.error("Deferred report delivery retained for cron retry", {
-        reportId, target: index === 0 ? "integrations" : "mention",
-      });
-    });
+    try { await processReportJobs(reportId); }
+    catch { console.error("Deferred report integration retained for cron retry", { reportId }); }
+    try { await processMentionNotifications(reportId); }
+    catch { console.error("Deferred mention DM retained for cron retry", { reportId }); }
   });
 }

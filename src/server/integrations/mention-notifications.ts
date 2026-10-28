@@ -1,3 +1,4 @@
+import { appendMentionThreadLink, mentionThreadLink } from "@/lib/mention-thread-link";
 import { createSlackMentionResolver } from "@/server/integrations/slack-mention-names";
 import "server-only";
 import { WebClient } from "@slack/web-api";
@@ -19,6 +20,8 @@ export async function processMentionNotifications(reportId?: string) {
       select n.report_id, n.target_id from report_mention_notifications n join reports r on r.id=n.report_id
       where n.delivered_at is null and n.available_at <= now() and n.attempts < 8
         and (n.lease_until is null or n.lease_until < now()) and r.status='published'
+        and exists (select 1 from integration_bindings b where b.report_id=n.report_id
+          and b.slack_channel_id is not null and b.slack_message_ts is not null)
         and (${reportId ?? null}::uuid is null or n.report_id=${reportId ?? null}::uuid)
       order by n.created_at, n.report_id, n.target_id limit 10 for update of n skip locked)
     returning n.*`;
@@ -41,7 +44,8 @@ export async function processMentionNotifications(reportId?: string) {
           where report_id=${row.report_id} and target_id=${row.target_id}`;
       }
       for (const recipient of recipients) {
-        const [report] = await sql`select r.title, m.display_name from reports r join members m on m.id=r.author_id
+        const [report] = await sql`select r.title, m.display_name, b.slack_channel_id, b.slack_message_ts, b.slack_permalink
+          from reports r join members m on m.id=r.author_id join integration_bindings b on b.report_id=r.id
           where r.id=${row.report_id} and r.status='published'`;
         if (!report) throw new Error("REPORT_NO_LONGER_PUBLIC");
         const url = new URL(`/reports/${encodeURIComponent(row.report_id)}`, env.APP_BASE_URL).toString();
@@ -52,7 +56,7 @@ export async function processMentionNotifications(reportId?: string) {
           recipientName: await resolveName(recipient) ?? recipient,
           reportId: row.report_id,
           reportTitle: report.title,
-          text: `日報からのお知らせ\nあなたがメンションされています。\n${escapeText(report.display_name)}さんの日報「${escapeText(report.title)}」\n<${url}|日報を読む>`,
+          text: appendMentionThreadLink(`日報からのお知らせ\nあなたがメンションされています。\n${escapeText(report.display_name)}さんの日報「${escapeText(report.title)}」\n<${url}|日報を読む>`, mentionThreadLink(report.slack_channel_id, report.slack_message_ts, report.slack_permalink)),
         });
       }
       await sql`update report_mention_notifications set delivered_at=now(), lease_until=null, last_error=null

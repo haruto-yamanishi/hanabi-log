@@ -76,10 +76,10 @@ export async function POST(request: Request): Promise<Response> {
     after(async () => {
       try {
         await processIncomingSlackReports();
-        await processMentionNotifications();
         await syncCommentMedia();
         await processLikeNotifications();
         await processPendingJobs();
+        await processMentionNotifications();
       } catch { console.error("Deferred Slack import failed; retained for cron retry"); }
     });
   }
