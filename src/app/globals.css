@@ -1162,8 +1162,8 @@ strong {
 .profile-stats dd { font-size: 22px; font-weight: 750; line-height: 1.2; margin: 0; }
 .profile-card > .button { grid-column: 1 / -1; justify-self: start; }
 
-.contribution-graph { border: 1px solid var(--line); margin: 0 0 34px; padding: 20px; }
-.contribution-graph .section-heading { align-items: baseline; display: flex; justify-content: space-between; margin-bottom: 16px; }
+.contribution-graph { border: 1px solid var(--line); margin: 0 0 34px; min-width: 0; padding: 20px; }
+.contribution-graph .section-heading { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; margin-bottom: 16px; }
 .contribution-graph .section-heading h2 { font-size: 18px; margin: 0; }
 .contribution-graph .section-heading span, .contribution-graph p { color: var(--muted); font-size: 12px; margin: 0; }
 .contribution-graph__scroll { overflow-x: auto; padding-bottom: 4px; }
