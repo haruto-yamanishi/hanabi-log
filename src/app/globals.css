@@ -1166,10 +1166,11 @@ strong {
 .contribution-graph .section-heading { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; margin-bottom: 16px; }
 .contribution-graph .section-heading h2 { font-size: 18px; margin: 0; }
 .contribution-graph .section-heading span, .contribution-graph p { color: var(--muted); font-size: 12px; margin: 0; }
-.contribution-graph__scroll { overflow-x: auto; padding-bottom: 4px; }
-.contribution-graph__chart { display: grid; gap: 7px; grid-template-columns: 14px max-content; min-width: 760px; }
+.contribution-graph__scroll { max-width: 100%; overflow-x: auto; padding-bottom: 4px; }
+.contribution-graph__scroll:focus-visible { outline: 2px solid var(--hanabi); outline-offset: 3px; }
+.contribution-graph__chart { display: grid; gap: 7px; grid-template-columns: 14px max-content; width: max-content; padding-right: 20px; }
 .contribution-graph__weekdays { color: var(--muted); display: grid; font-size: 10px; gap: 3px; grid-template-rows: repeat(7, 11px); line-height: 11px; margin-top: 16px; text-align: right; }
-.contribution-graph__months { color: var(--muted); display: grid; font-size: 10px; grid-template-columns: repeat(54, 11px); gap: 3px; height: 16px; line-height: 11px; overflow: visible; white-space: nowrap; }
+.contribution-graph__months { color: var(--muted); display: grid; font-size: 10px; grid-template-rows: 11px; column-gap: 3px; height: 16px; line-height: 11px; white-space: nowrap; }
 .contribution-graph__grid { display: grid; gap: 3px; grid-auto-flow: column; grid-template-rows: repeat(7, 11px); width: max-content; }
 .contribution-graph__blank { height: 11px; width: 11px; }
 .contribution-graph__day { background: #edf0f4; height: 11px; width: 11px; }
