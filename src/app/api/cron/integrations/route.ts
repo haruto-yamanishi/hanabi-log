@@ -1,3 +1,9 @@
+import { processBingoNotifications } from "@/server/integrations/halloween-bingo";
+import { processMentionNotifications } from "@/server/integrations/mention-notifications";
+import { processPublicationNotifications } from "@/server/publication";
+import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
+export const maxDuration = 300;
+
 import { timingSafeEqual } from "node:crypto";
 import { apiResponse } from "@/app/api/_shared";
 import { env, isDemoMode } from "@/server/env";
@@ -7,6 +13,7 @@ import { processPendingJobs } from "@/server/integrations/outbox";
 import { processIncomingSlackReports } from "@/server/integrations/slack-incoming-store";
 
 import { processLikeNotifications } from "@/server/integrations/like-notifications";
+import { processMemberRoleNotifications } from "@/server/integrations/role-notifications";
 import { cleanupOperationalData } from "@/server/maintenance/retention";
 
 function authorized(request: Request): boolean {
@@ -25,8 +32,13 @@ export async function POST(request: Request): Promise<Response> {
   return apiResponse(async () => {
     if (!authorized(request)) throw new AppError("UNAUTHORIZED", "Cron認証に失敗しました", 401);
     await processIncomingSlackReports();
+    await syncCommentMedia();
+    await processPublicationNotifications();
+    await processMemberRoleNotifications();
     await processLikeNotifications();
     const result = await processPendingJobs();
+    await processMentionNotifications();
+    await processBingoNotifications();
     const cleanup = await cleanupOperationalData();
     return Response.json({ ...result, cleanup }, { headers: { "Cache-Control": "no-store" } });
   });

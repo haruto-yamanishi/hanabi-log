@@ -88,6 +88,7 @@ export const reportPatchSchema = z.object({
 });
 
 export const reportFiltersSchema = z.object({
+  sort: z.enum(["newest", "oldest", "popular"]).optional(),
   includeIntegration: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
   q: z.string().trim().max(100).optional(),
   activityArea: z.enum(ACTIVITY_AREAS).optional(),

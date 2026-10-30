@@ -12,6 +12,8 @@
 /coverage
 /playwright-report/
 /test-results/
+/youtube-mp3/dl/
+/youtube-mp3/.bin/
 
 # local configuration and secrets
 .env
@@ -35,3 +37,7 @@ pnpm-debug.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local promotional videos, captures, and audio tooling
+/artifacts/
+/youtube-mp3/

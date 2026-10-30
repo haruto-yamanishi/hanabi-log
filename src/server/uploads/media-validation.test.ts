@@ -51,3 +51,14 @@ describe("uploaded media validation", () => {
     expect(() => assertMediaNameMatchesMime("photo.jpg", "member/2026-09/id.png", "image/jpeg")).toThrow(/Storage path/);
   });
 });
+
+it("validates QuickTime ftyp videos without treating them as WebM", () => {
+  const bytes = Buffer.alloc(20);
+  bytes.writeUInt32BE(20, 0);
+  bytes.write("ftyp", 4);
+  bytes.write("qt  ", 8);
+  bytes.write("qt  ", 16);
+  expect(validateMediaBytes(bytes, "video/quicktime").mimeType).toBe("video/quicktime");
+  expect(() => validateMediaBytes(bytes, "video/mp4")).toThrow(/MIME/);
+  expect(() => assertMediaNameMatchesMime("clip.MOV", "owner/id.mov", "video/quicktime")).not.toThrow();
+});

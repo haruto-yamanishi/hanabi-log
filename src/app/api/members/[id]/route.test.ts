@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser, Member } from "@/lib/types";
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("@/server/integrations/role-notifications", () => ({ processMemberRoleNotifications: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
   requireCurrentUser: vi.fn(),
@@ -46,7 +48,7 @@ const target: Member = {
   updatedAt: "2026-08-20T00:00:00.000Z",
 };
 
-function request(role: "member" | "admin"): Request {
+function request(role: "member" | "media" | "admin"): Request {
   return new Request(`https://hanabi.example/api/members/${target.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -75,6 +77,14 @@ function context(id = target.id) {
 }
 
 describe("PATCH /api/members/:id", () => {
+  it("allows an admin to grant Media without allowing self-demotion", async () => {
+    mocks.setMemberRole.mockResolvedValue({...target,role:'media'});
+    const result=await PATCH(request('media'),context());
+    expect(result.status).toBe(200);
+    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id,'media',admin);
+    expect((await PATCH(request('media'),context(admin.id))).status).toBe(409);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireCurrentUser.mockResolvedValue(admin);
@@ -87,7 +97,7 @@ describe("PATCH /api/members/:id", () => {
     const response = await PATCH(request("admin"), context());
 
     expect(response.status).toBe(200);
-    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id, "admin");
+    expect(mocks.setMemberRole).toHaveBeenCalledWith(target.id, "admin", admin);
     await expect(response.json()).resolves.toEqual({
       id: target.id,
       displayName: target.displayName,

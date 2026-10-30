@@ -1,5 +1,6 @@
 "use client";
 
+import { HalloweenScene } from "@/components/seasonal/halloween-scene";
 import { useEffect, useState } from "react";
 import { HanabiLogo } from "@/components/logo";
 
@@ -32,6 +33,7 @@ export function InitialLoadingScreen() {
 
   return (
     <div aria-busy="true" aria-label="読み込んでいます" className="initial-loading" role="status">
+      <HalloweenScene variant="loading" />
       <div className="initial-loading__logo">
         <HanabiLogo className="initial-loading__image" />
         <svg aria-hidden="true" className="initial-loading__arch" viewBox="0 0 100 72.86" preserveAspectRatio="none">

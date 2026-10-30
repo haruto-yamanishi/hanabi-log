@@ -1,0 +1,4 @@
+/* Report-date keepsakes, independent of the current site theme. */
+.report-article__header > .report-seasonal-stamp { float: right; margin: 0 0 8px 12px; pointer-events: none; }
+.report-seasonal-stamp .halloween-scene--header { margin: 0; }
+.report-seasonal-stamp .halloween-friend { animation: none; }

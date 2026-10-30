@@ -35,6 +35,8 @@ export interface SlackDeleteMessageInput {
 }
 
 export interface SlackApiPort {
+  findFullReportMessage?(channel: string, threadTs: string): Promise<string | null>;
+  findReportMessage?(channel: string, reportId: string): Promise<string | null>;
   postMessage(input: SlackPostMessageInput): Promise<{
     channel: string;
     ts: string;
@@ -77,6 +79,13 @@ function escapeMrkdwn(value: string): string {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function mentionMrkdwn(value: string): string {
+  return value.split(/(@\[[^\]\n]+\]\(slack:[UWS][A-Z0-9]+\))/g).map(part => {
+    const match = /^@\[[^\]\n]+\]\(slack:([UWS][A-Z0-9]+)\)$/.exec(part);
+    return match ? (match[1].startsWith("S") ? `<!subteam^${match[1]}>` : `<@${match[1]}>`) : escapeMrkdwn(part);
+  }).join("");
 }
 
 function reportUrl(appBaseUrl: string, reportId: string): string {
@@ -130,7 +139,7 @@ export function renderSlackFullReport(report: Report): SlackMessagePayload {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${index === 0 ? `*${label}*\n` : ""}${escapeMrkdwn(chunk)}`,
+          text: `${index === 0 ? `*${label}*\n` : ""}${mentionMrkdwn(chunk)}`,
         },
       });
     });
@@ -153,7 +162,7 @@ export function renderSlackReport(
   const fallbackText = `${escapeMrkdwn(
     `[${report.activityArea}] ${visibleTitle}`,
   )}\n${byline}`;
-  const summary = escapeMrkdwn(report.summary || report.activityText.slice(0, 100));
+  const summary = mentionMrkdwn(report.summary || report.activityText.slice(0, 100));
   const context = [
     report.activityArea,
     report.contentCategory,
@@ -235,7 +244,7 @@ export function renderSlackReport(
       type: "context",
       elements: [{
         type: "mrkdwn",
-        text: `動画 ${videoCount} 件は日報ページで再生できます。`,
+        text: `動画 ${videoCount} 件はこの投稿のスレッドに添付します。日報ページでも再生できます。`,
       }],
     });
   }
@@ -264,6 +273,8 @@ export class SlackReportService implements SlackReportIntegration {
     private readonly channelId: string,
     private readonly appBaseUrl: string,
     private readonly prepareReport?: PrepareSlackReport,
+    private readonly persistPosted?: (reportId: string, channel: string, ts: string) => Promise<void>,
+    private readonly syncVideos?: (report: Report, channel: string, ts: string) => Promise<void>,
   ) {}
 
   async sync(
@@ -279,9 +290,11 @@ export class SlackReportService implements SlackReportIntegration {
       : report;
     const message = renderSlackReport(preparedReport, this.appBaseUrl);
     const existingChannel = binding?.slackChannelId ?? this.channelId;
-    const existingTs = binding?.slackMessageTs;
+    const existingTs = binding?.slackMessageTs
+      ?? await this.api.findReportMessage?.(existingChannel, report.id);
 
     if (existingTs) {
+      await this.persistPosted?.(report.id, existingChannel, existingTs);
       await this.api.updateMessage({
         channel: existingChannel,
         ts: existingTs,
@@ -290,9 +303,10 @@ export class SlackReportService implements SlackReportIntegration {
       const retryFullThread = binding?.slackStatus === "partial"
         && binding.slackLastError?.includes("SLACK_FULL_REPORT_THREAD_FAILED")
         && needsFullSlackThread(preparedReport);
-      const followupFailure = retryFullThread
+      let followupFailure = (retryFullThread || Boolean(this.api.findFullReportMessage)) && needsFullSlackThread(preparedReport)
         ? await this.postFullReportThread(preparedReport, existingChannel, existingTs)
         : undefined;
+      followupFailure = await this.syncVideoAttachments(preparedReport, existingChannel, existingTs) ?? followupFailure;
       return this.resolvePermalink({
         channelId: existingChannel,
         messageTs: existingTs,
@@ -304,11 +318,14 @@ export class SlackReportService implements SlackReportIntegration {
 
     const posted = await this.api.postMessage({
       channel: this.channelId,
+      metadata: { eventType: "hanabi_log_report", eventPayload: { report_id: report.id } },
       ...message,
     });
-    const followupFailure = needsFullSlackThread(preparedReport)
+    await this.persistPosted?.(report.id, posted.channel, posted.ts);
+    let followupFailure = needsFullSlackThread(preparedReport)
       ? await this.postFullReportThread(preparedReport, posted.channel, posted.ts)
       : undefined;
+    followupFailure = await this.syncVideoAttachments(preparedReport, posted.channel, posted.ts) ?? followupFailure;
     return this.resolvePermalink({
       channelId: posted.channel,
       messageTs: posted.ts,
@@ -317,12 +334,22 @@ export class SlackReportService implements SlackReportIntegration {
     });
   }
 
+  private async syncVideoAttachments(report: Report, channel: string, ts: string): Promise<IntegrationFailure | undefined> {
+    try { await this.syncVideos?.(report, channel, ts); return undefined; }
+    catch (error) { return toIntegrationFailure("slack", error); }
+  }
+
   private async postFullReportThread(
     report: Report,
     channel: string,
     threadTs: string,
   ): Promise<IntegrationFailure | undefined> {
     try {
+      const existingTs = await this.api.findFullReportMessage?.(channel, threadTs);
+      if (existingTs) {
+        await this.api.updateMessage({ channel, ts: existingTs, ...renderSlackFullReport(report) });
+        return undefined;
+      }
       await this.api.postMessage({
         channel,
         threadTs,
@@ -409,6 +436,33 @@ export class SlackWebApiAdapter implements SlackApiPort {
     return run;
   }
 
+  async findFullReportMessage(channel: string, threadTs: string): Promise<string | null> {
+    let cursor: string | undefined;
+    do {
+      const page = await this.client.conversations.replies({ channel, ts: threadTs, cursor, limit: 100, include_all_metadata: true });
+      const reply = page.messages?.find(message => message.metadata?.event_type === SLACK_FULL_REPORT_EVENT_TYPE);
+      if (reply?.ts) return reply.ts;
+      cursor = page.response_metadata?.next_cursor || undefined;
+      if (page.has_more && !cursor) throw new IntegrationError("SLACK_REPLIES_INCOMPLETE", { retryable: true });
+    } while (cursor);
+    return null;
+  }
+
+  async findReportMessage(channel: string, reportId: string): Promise<string | null> {
+    let cursor: string | undefined;
+    do {
+      const page = await this.client.conversations.history({ channel, cursor, limit: 100, include_all_metadata: true });
+      for (const message of page.messages ?? []) {
+        if (!message.bot_id) continue;
+        if ((message.metadata?.event_payload as Record<string, unknown> | undefined)?.report_id === reportId
+          || JSON.stringify(message.blocks ?? []).includes(`/reports/${reportId}`)) return message.ts ?? null;
+      }
+      cursor = page.response_metadata?.next_cursor || undefined;
+      if (page.has_more && !cursor) throw new IntegrationError("SLACK_HISTORY_INCOMPLETE", { retryable: true });
+    } while (cursor);
+    return null;
+  }
+
   async postMessage(
     input: SlackPostMessageInput,
   ): Promise<{ channel: string; ts: string }> {
@@ -492,11 +546,15 @@ export function createSlackIntegration(input: {
   channelId: string;
   appBaseUrl: string;
   prepareReport?: PrepareSlackReport;
+  persistPosted?: (reportId: string, channel: string, ts: string) => Promise<void>;
+  syncVideos?: (report: Report, channel: string, ts: string) => Promise<void>;
 }): SlackReportIntegration {
   return new SlackReportService(
     SlackWebApiAdapter.fromToken(input.token),
     input.channelId,
     input.appBaseUrl,
     input.prepareReport,
+    input.persistPosted,
+    input.syncVideos,
   );
 }

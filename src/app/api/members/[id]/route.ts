@@ -1,15 +1,17 @@
 import { z } from "zod";
+import { after } from "next/server";
 import { apiResponse, requestJson } from "@/app/api/_shared";
 import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";
 import { AppError } from "@/server/errors";
 import { toPublicMember } from "@/server/members";
 import { enforceRateLimit } from "@/server/rate-limit";
+import { processMemberRoleNotifications } from "@/server/integrations/role-notifications";
 import { getReportRepository } from "@/server/repositories";
 
 const memberIdSchema = z.uuid();
 const memberUpdateSchema = z.union([
-  z.object({ role: z.enum(["member", "admin"]) }).strict(),
+  z.object({ role: z.enum(["member", "media", "admin"]) }).strict(),
   z.object({ isActive: z.boolean() }).strict(),
 ]);
 
@@ -32,10 +34,15 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
     let member;
     let auditAction: string;
     if ("role" in update) {
-      if (memberId === actor.id && update.role === "member") {
-        throw new AppError("SELF_DEMOTION_FORBIDDEN", "自分自身をMemberへ変更することはできません", 409);
+      if (memberId === actor.id && update.role !== "admin") {
+        throw new AppError("SELF_DEMOTION_FORBIDDEN", "自分自身のAdmin権限は外せません", 409);
       }
-      member = await repository.setMemberRole(memberId, update.role);
+      member = await repository.setMemberRole(memberId, update.role, actor);
+      if (target?.role !== update.role) {
+        after(async () => {
+          await processMemberRoleNotifications();
+        });
+      }
       auditAction = "member.role_changed";
     } else {
       if (memberId === actor.id && !update.isActive) {

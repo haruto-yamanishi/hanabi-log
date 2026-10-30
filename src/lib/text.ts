@@ -1,5 +1,5 @@
 export function plainText(value: string): string {
-  return value
+  return displayMentions(value)
     .replace(/<[^>]*>/g, " ")
     .replace(/[`*_>#\[\]()~-]/g, " ")
     .replace(/\s+/g, " ")
@@ -28,4 +28,8 @@ export function todayInJst(now = new Date()): string {
   }).formatToParts(now);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function displayMentions(text: string): string {
+  return text.replace(/@\[([^\]\n]+)\]\(slack:[UWS][A-Z0-9]+\)/g, "@$1");
 }

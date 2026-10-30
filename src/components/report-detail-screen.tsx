@@ -1,5 +1,10 @@
 "use client";
 
+import { ReportSeasonalStamp } from "@/components/seasonal/report-seasonal-stamp";
+import { PublicationRequestForm } from "@/components/publication-request-form";
+import { ReportViewTracker } from "@/components/usage-tracker";
+import { displayMentions } from "@/lib/text";
+
 /* eslint-disable @next/next/no-img-element */
 import { canDeleteReport } from "@/lib/authorization";
 import Link from "next/link";
@@ -140,6 +145,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
 
   return (
     <div className="page page--report-detail">
+      <ReportViewTracker reportId={reportId} />
       <div className="detail-topbar">
         <Link className="back-link" href="/"><ArrowLeftIcon />ホームへ</Link>
         <div className="detail-topbar__actions">
@@ -157,15 +163,17 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
       {report.status === "draft" ? <div className="draft-banner"><EditIcon /><p><strong>下書きです</strong><span>SlackとNotionにはまだ配信されていません。</span></p></div> : null}
       {report.status === "pending_approval" ? <div className="approval-banner"><CheckIcon /><p><strong>公開承認待ちです</strong><span>Adminが承認するまで本人とAdminだけが閲覧できます。</span></p></div> : null}
 
+      {user && report.status === "published" ? <PublicationRequestForm report={report} user={user} /> : null}
       <article className={`report-article ${activityAreaClassName(report.activityArea)}`}>
         <header className="report-article__header">
+          <ReportSeasonalStamp reportDate={report.reportDate} />
           <div className="badge-row">
             <span className="category-badge category-badge--area">{report.activityArea}</span>
             <span className="category-badge">{report.contentCategory}</span>
             <StatusBadge status={report.status} />
           </div>
           <h1>{report.title}</h1>
-          {report.summary ? <p className="report-article__summary">{report.summary}</p> : null}
+          {report.summary ? <p className="report-article__summary">{displayMentions(report.summary)}</p> : null}
           <div className="report-byline">
             <Avatar name={report.author.displayName} src={report.author.avatarUrl} />
             <div><Link className="report-byline__author-link" href={`/members/${report.authorId}`}>{report.author.displayName}</Link><span><CalendarIcon /><time dateTime={report.reportDate}>{formatReportDate(report.reportDate, true)}</time></span></div>
@@ -253,7 +261,7 @@ function ReportSection({ title, content, index, tone }: { title: string; content
   return (
     <section className={`report-section${tone ? ` report-section--${tone}` : ""}`}>
       <div className="report-section__heading"><span>{index}</span><h2>{title}</h2></div>
-      <div className="report-section__content">{content}</div>
+      <div className="report-section__content">{displayMentions(content)}</div>
     </section>
   );
 }

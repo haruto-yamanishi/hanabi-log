@@ -1,3 +1,5 @@
+export const maxDuration = 300;
+
 import { z } from "zod";
 
 import type { Report } from "@/lib/types";
@@ -6,6 +8,7 @@ import { requireCurrentUser } from "@/server/auth";
 import { env } from "@/server/env";
 import { AppError } from "@/server/errors";
 import { toIntegrationFailure } from "@/server/integrations/errors";
+import { rememberComments, withCommentLikes } from "@/server/integrations/comment-likes";
 import { createSlackCommentService } from "@/server/integrations/slack-comments";
 import { enforceRateLimit } from "@/server/rate-limit";
 import { getReportRepository } from "@/server/repositories";
@@ -80,9 +83,14 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
         ...binding,
         members: await repository.listMembers(),
       });
+      await rememberComments(id, comments, true);
+      if (comments.some(comment => comment.attachments?.length)) {
+        const { importCommentAttachments } = await import("@/server/integrations/slack-file-import");
+        await importCommentAttachments(id, comments, new URL(request.url).origin, false);
+      }
       recordCommentContributions(id, comments);
       return Response.json(
-        { available: true, comments },
+        { available: true, comments: await withCommentLikes(id, comments, actor.id) },
         { headers: { "Cache-Control": "private, no-store" } },
       );
     } catch (error) {
@@ -110,6 +118,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
 
     try {
       const comment = await slackConfiguration().post({ ...binding, actor, body });
+      await rememberComments(id, [comment]);
       recordCommentContributions(id, [comment]);
       return Response.json(comment, {
         status: 201,

@@ -52,7 +52,7 @@ export function MemberProfileScreen({ memberId }: { memberId: string }) {
     <PageHeader actions={<Link className="back-link" href="/"><ArrowLeftIcon />ホームへ</Link>} title="メンバー" />
     <section className="profile-card">
       <Avatar name={member.displayName} size="large" src={member.avatarUrl} />
-      <div className="profile-card__copy"><div><h2>{member.displayName}</h2><span className="role-badge">{member.role === "admin" ? "Admin" : "Member"}</span></div></div>
+      <div className="profile-card__copy"><div><h2>{member.displayName}</h2><span className="role-badge">{member.role === "admin" ? "Admin" : member.role === "media" ? "Media" : "Member"}</span></div></div>
       <dl className="profile-stats"><div><dt>公開日報</dt><dd>{reports.length}</dd></div></dl>
     </section>
     <LogRankingCard ranking={ranking} />
