@@ -2226,3 +2226,7 @@ h3 {
 .publication-panel summary { cursor:pointer; font-size:13px; font-weight:600; padding:8px 0; }
 .publication-panel h2 { font-size:19px; }.publication-panel h3 { font-size:15px; }
 @media(max-width:600px) { .publication-panel { padding:16px; }.publication-actions .button { white-space:normal; }.publication-form > .button { white-space:normal; } }
+
+.mobile-header__links { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: 12px; }
+.mobile-header__links a { display: flex; align-items: center; min-height: 44px; padding: 0 10px; color: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; border-radius: 8px; }
+.mobile-header__links a[aria-current="page"] { background: rgba(255,255,255,.18); text-decoration: underline; text-underline-offset: 4px; }

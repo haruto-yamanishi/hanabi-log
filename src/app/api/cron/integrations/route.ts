@@ -1,3 +1,4 @@
+import { processBingoNotifications } from "@/server/integrations/halloween-bingo";
 import { processMentionNotifications } from "@/server/integrations/mention-notifications";
 import { processPublicationNotifications } from "@/server/publication";
 import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
@@ -37,6 +38,7 @@ export async function POST(request: Request): Promise<Response> {
     await processLikeNotifications();
     const result = await processPendingJobs();
     await processMentionNotifications();
+    await processBingoNotifications();
     const cleanup = await cleanupOperationalData();
     return Response.json({ ...result, cleanup }, { headers: { "Cache-Control": "no-store" } });
   });

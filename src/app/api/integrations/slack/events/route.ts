@@ -1,3 +1,4 @@
+import { isBingoAnnouncement, processBingoNotifications } from "@/server/integrations/halloween-bingo";
 import { processMentionNotifications } from "@/server/integrations/mention-notifications";
 export const maxDuration = 300;
 import { replyThread } from "@/server/integrations/slack-reply-event";
@@ -20,6 +21,12 @@ export async function POST(request: Request): Promise<Response> {
   if (!payload || typeof payload !== "object") return new Response(null, { status: 400 });
   if (payload.type === "url_verification" && typeof payload.challenge === "string") return Response.json({ challenge: payload.challenge });
   if (payload.team_id !== env.SLACK_TEAM_ID) return new Response(null, { status: 403 });
+  if (payload.type === "event_callback" && payload.event?.bot_id && isBingoAnnouncement(payload.event?.text)) {
+    after(async () => {
+      try { await processBingoNotifications(); }
+      catch { console.error("Bingo announcement delivery retained for cron retry"); }
+    });
+  }
   const message = payload.type === "event_callback" ? incomingSlackMessage(payload.event, env.SLACK_CHANNEL_ID) : null;
   const reaction = payload.type === "event_callback" ? incomingSlackReaction(payload.event, env.SLACK_CHANNEL_ID) : null;
   const thread = payload.type === "event_callback" ? replyThread(payload.event, env.SLACK_CHANNEL_ID) : null;
@@ -80,6 +87,7 @@ export async function POST(request: Request): Promise<Response> {
         await processLikeNotifications();
         await processPendingJobs();
         await processMentionNotifications();
+        await processBingoNotifications();
       } catch { console.error("Deferred Slack import failed; retained for cron retry"); }
     });
   }

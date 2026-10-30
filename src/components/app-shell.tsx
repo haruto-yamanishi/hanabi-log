@@ -1,5 +1,6 @@
 "use client";
 
+import { HalloweenBingo } from "@/components/halloween-bingo";
 import { PresenceTracker } from "@/components/usage-tracker";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -134,12 +135,16 @@ export function AppShell({ children, initialUser }: { children: ReactNode; initi
 
       <header className="mobile-header">
         <HanabiMark compact />
+        <nav className="mobile-header__links" aria-label="管理・更新情報">
+          {user.role === "admin" ? <Link href="/admin" aria-current={isActive(pathname, "/admin") ? "page" : undefined}>管理</Link> : null}
+          <Link href="/updates" aria-current={isActive(pathname, "/updates") ? "page" : undefined}>更新情報</Link>
+        </nav>
         <Link aria-label="マイページを開く" href="/me">
           <Avatar name={user?.displayName || "Hanabiメンバー"} size="small" src={user?.avatarUrl} />
         </Link>
       </header>
 
-      <main className="main-content" id="main-content">{children}<footer className="app-footer"><Link href="/updates">パッチノート・クレジット</Link><span>Hanabi Log · FRC Team Hanabi</span></footer></main>
+      <main className="main-content" id="main-content"><HalloweenBingo />{children}<footer className="app-footer"><Link href="/updates">パッチノート・クレジット</Link><span>Hanabi Log · FRC Team Hanabi</span></footer></main>
 
       <nav aria-label="モバイルナビゲーション" className="bottom-nav">
         <Link aria-current={pathname === "/" ? "page" : undefined} href="/">
