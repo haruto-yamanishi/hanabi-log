@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+import { HalloweenScene } from "@/components/seasonal/halloween-scene";
 import Link from "next/link";
 import type { Route } from "next";
 import type { ReactNode } from "react";
@@ -44,6 +45,7 @@ export function PageHeader({
         <h1>{title}</h1>
         {description ? <p className="page-header__description">{description}</p> : null}
       </div>
+      <HalloweenScene variant="header" />
       {actions ? <div className="page-header__actions">{actions}</div> : null}
     </header>
   );

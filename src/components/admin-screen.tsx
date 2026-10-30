@@ -1,5 +1,6 @@
 "use client";
 
+import { SeasonalPreview } from "@/components/seasonal/seasonal-preview";
 import { AdminUsagePanel } from "@/components/admin-usage-panel";
 import type { UsageAnalytics } from "@/lib/analytics";
 import Link from "next/link";
@@ -301,6 +302,7 @@ export function AdminScreen() {
       <PageHeader description="同期状態、メンバー、分類を確認します。" title="管理" />
       {loading ? <LoadingView label="管理情報を読み込んでいます" /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : (
         <>
+          {user?.role === "admin" ? <SeasonalPreview /> : null}
           <section aria-label="システム概要" className="admin-stats">
             <div><span className="admin-stats__icon admin-stats__icon--warning"><CheckIcon /></span><p>公開承認待ち</p><strong>{pendingApprovals.length}</strong><small>Inactiveメンバー</small></div>
             <div><span className="admin-stats__icon admin-stats__icon--error"><AlertIcon /></span><p>要対応の同期</p><strong>{issues.length}</strong><small>Slack / Notion</small></div>

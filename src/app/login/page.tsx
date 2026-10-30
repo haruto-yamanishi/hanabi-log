@@ -1,3 +1,4 @@
+import { HalloweenScene } from "@/components/seasonal/halloween-scene";
 import type { Metadata } from "next";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
@@ -27,6 +28,7 @@ export default async function LoginPage({
           <HanabiLogo className="login-wordmark" inverse />
           <h1>Hanabi Log</h1>
           <p>FRC Team Hanabi 部内日報</p>
+          <HalloweenScene variant="login" />
         </div>
       </section>
       <section className="login-panel" aria-labelledby="login-title">

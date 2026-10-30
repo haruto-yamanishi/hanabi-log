@@ -1,5 +1,6 @@
 "use client";
 
+import { ReportSeasonalStamp } from "@/components/seasonal/report-seasonal-stamp";
 import { PublicationRequestForm } from "@/components/publication-request-form";
 import { ReportViewTracker } from "@/components/usage-tracker";
 import { displayMentions } from "@/lib/text";
@@ -165,6 +166,7 @@ export function ReportDetailScreen({ reportId, initialNotice }: { reportId: stri
       {user && report.status === "published" ? <PublicationRequestForm report={report} user={user} /> : null}
       <article className={`report-article ${activityAreaClassName(report.activityArea)}`}>
         <header className="report-article__header">
+          <ReportSeasonalStamp reportDate={report.reportDate} />
           <div className="badge-row">
             <span className="category-badge category-badge--area">{report.activityArea}</span>
             <span className="category-badge">{report.contentCategory}</span>

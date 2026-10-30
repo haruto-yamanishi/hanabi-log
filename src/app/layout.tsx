@@ -5,6 +5,10 @@ import { InitialLoadingScreen } from "@/components/initial-loading-screen";
 import { WebAppSupport } from "@/components/web-app-support";
 import { InstallPrompt } from "@/components/install-prompt";
 import "./globals.css";
+import "@/components/seasonal/halloween.css";
+import "@/components/seasonal/seasonal-atmosphere.css";
+import "@/components/seasonal/report-seasonal-stamp.css";
+import { HalloweenProvider } from "@/components/seasonal/halloween-provider";
 
 const zenKakuGothic = Zen_Kaku_Gothic_New({
   display: "swap",
@@ -50,10 +54,12 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html className={`${zenKakuGothic.variable} ${outfit.variable}`} data-scroll-behavior="smooth" lang="ja">
       <body>
+        <HalloweenProvider>
         <InitialLoadingScreen />
         <WebAppSupport />
         {children}
         <InstallPrompt />
+        </HalloweenProvider>
       </body>
     </html>
   );
