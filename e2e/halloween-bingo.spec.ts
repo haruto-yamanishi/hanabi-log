@@ -62,5 +62,7 @@ test("host opens everyone's cards, both see the machine and the same number, rec
     expect(await guest.locator('[data-number="1"]').evaluate(el => getComputedStyle(el).animationName)).toBe("none");
     await page.getByRole("dialog").evaluate(el => { el.scrollTop = 0; });
     await page.screenshot({ path: `artifacts/bingo-live-${info.project.name}.png`, fullPage: true });
+    await guest.getByRole("dialog").evaluate(el => { el.scrollTop = 0; });
+    await guest.screenshot({ path: `artifacts/bingo-player-${info.project.name}.png`, fullPage: true });
   } finally { await participant.close(); }
 });
