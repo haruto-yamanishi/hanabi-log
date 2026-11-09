@@ -83,7 +83,7 @@ export async function handlePublicationInteraction(payload: Interaction): Promis
     const errors: Record<string, string> = {};
     if (error instanceof ZodError) {
       for (const issue of error.issues) {
-        const key = issue.path[0] === "body" ? "body_0" : issue.path[0] === "url" ? "url" : "note_0";
+        const key = issue.path[0] === "body" ? "body_0" : issue.path[0] === "url" ? "url" : issue.path[0] === "remarks" ? "remarks" : "note_0";
         if (Object.hasOwn(values, key)) errors[key] = issue.message;
       }
     }

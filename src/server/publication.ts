@@ -32,18 +32,18 @@ function notification(item: PublicationRequest) {
   const url = new URL(`/publication-requests/${item.id}`, env.APP_BASE_URL ?? "http://localhost:3000").href;
   const channels = item.channels.map(channel => channel === "その他" ? `その他（${item.otherChannel}）` : channel).join("・");
   const last = item.history.at(-1)!;
-  const text = item.version === 1 ? `${item.requesterName}さんから日報の掲載許可の依頼です。\n「${item.title}」\n掲載先：${channels}\n${item.message}\n日報本文と日報の添付が対象です（コメントは含みません）。\nボタンからSlack内で本文を確認して回答できます。`
-    : `「${item.title}」の掲載依頼に更新があります。\n掲載先：${channels}\n${last.actorName}：${last.action}\n状態：${PUBLICATION_STATUS[item.status]}${last.note ? `\n\n校正・修正内容：\n${last.note}` : ""}${last.body ? `\n\n投稿本文：\n${last.body}` : ""}${last.url ? `\n\n確認用URL：\n${last.url}` : ""}`;
+  const text = item.version === 1 ? `${item.requesterName}さんから日報の掲載許可の依頼です。\n「${item.title}」\n掲載先：${channels}\n${item.message}\n日報本文と日報の添付が対象です（コメントは含みません）。\nボタンからSlack内で本文を確認して回答できます。${item.draftBody ? `\n\n確認用のSNS投稿文：\n${item.draftBody}${item.draftUrl ? `\n\n確認用URL：\n${item.draftUrl}` : ""}` : ""}`
+    : `「${item.title}」の掲載依頼に更新があります。\n掲載先：${channels}\n${last.actorName}：${last.action}\n状態：${PUBLICATION_STATUS[item.status]}${last.note ? `\n\n校正・修正内容：\n${last.note}` : ""}${last.remarks ? `\n\n備考：\n${last.remarks}` : ""}${last.body ? `\n\n投稿本文：\n${last.body}` : ""}${last.url ? `\n\n確認用URL：\n${last.url}` : ""}`;
   const blocks: Extract<import("@slack/web-api").ChatPostMessageArguments, { blocks: unknown }>["blocks"] = [];
   for (let start=0; start<text.length; start+=2800) blocks.push({ type:"section", text:{ type:"plain_text", text:text.slice(start,start+2800) } });
-  if (item.version === 1) {
+  if (item.version === 1 && item.status === "pending") {
     for (const [decision,label] of Object.entries(DECISIONS)) blocks.push({ type:"actions", elements:[publicationButton(item.id, decision as keyof typeof DECISIONS, label)] });
   } else blocks.push({type:"actions",elements:[publicationButton(item.id, ["awaiting_draft", "changes_requested"].includes(item.status) ? "submit_draft" : "details", item.status === "awaiting_review" ? "Slackで投稿本文とURLを最終確認する" : ["awaiting_draft", "changes_requested"].includes(item.status) ? "Slackで投稿本文とURLを送る" : "Slackで掲載依頼を確認する")]});
   return { text: `${text}\n\n${url}`, blocks, recipientId: item.version === 1 || item.status === "awaiting_review" ? item.authorId : item.requesterId };
 }
 function initialRequest(report: Report, actor: CurrentUser, input: z.infer<typeof publicationCreateSchema>, id: string): PublicationRequest {
   const now = new Date().toISOString();
-  return { id, reportId:report.id,authorId:report.authorId,requesterId:actor.id,authorName:report.author.displayName,requesterName:actor.displayName,title:report.title,reportVersion:report.version,sourceBody:reportPublicationText(report),sourceMedia:report.attachments.map(file => ({id:file.id,filename:file.filename})),channels:input.channels,otherChannel:input.otherChannel,message:input.message,status:"pending",authorBody:"",correctionNote:"",draftBody:"",draftUrl:"",reviewNote:"",version:1,createdAt:now,updatedAt:now,history:[{version:1,actorName:actor.displayName,action:"掲載許可を依頼",at:now}] };
+  return { id, reportId:report.id,authorId:report.authorId,requesterId:actor.id,authorName:report.author.displayName,requesterName:actor.displayName,title:report.title,reportVersion:report.version,sourceBody:reportPublicationText(report),sourceMedia:report.attachments.map(file => ({id:file.id,filename:file.filename})),channels:input.channels,otherChannel:input.otherChannel,message:input.message,status:input.draftBody ? "awaiting_review" : "pending",authorBody:"",correctionNote:"",draftBody:input.draftBody || "",draftUrl:input.draftUrl || "",reviewNote:"",version:1,createdAt:now,updatedAt:now,history:[{version:1,actorName:actor.displayName,action:input.draftBody ? "SNS投稿文を添えて掲載許可を依頼" : "掲載許可を依頼",body:input.draftBody,url:input.draftUrl,at:now}] };
 }
 export async function createPublication(reportId: string, actor: CurrentUser, input: z.infer<typeof publicationCreateSchema>, id: string) {
   if (!canRequestPublication(actor)) throw new AppError("FORBIDDEN","掲載依頼はMediaまたはAdminだけが行えます",403);

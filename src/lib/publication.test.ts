@@ -6,6 +6,42 @@ const media:CurrentUser={...author,id:"media",role:"media",displayName:"Editor"}
 const admin:CurrentUser={...author,id:"admin",role:"admin"};
 const base:PublicationRequest={id:"r",reportId:"report",authorId:author.id,requesterId:media.id,authorName:"Author",requesterName:"Editor",title:"Title",reportVersion:1,sourceBody:"original",sourceMedia:[],channels:["note"],otherChannel:"",message:"",status:"pending",authorBody:"",correctionNote:"",draftBody:"",draftUrl:"",reviewNote:"",version:1,createdAt:"2026-10-24T00:00:00Z",updatedAt:"2026-10-24T00:00:00Z",history:[]};
 describe("publication consent",()=>{
+  it("keeps remarks separate from correction instructions throughout review", () => {
+    const response = publicationActionSchema.parse({ action: "respond", version: 1, decision: "request_edit", note: "名前を伏せる", remarks: " 掲載名はハナビ " });
+    const requested = transitionPublication(base, response, author);
+    expect(requested.correctionNote).toBe("名前を伏せる");
+    expect(requested.history.at(-1)?.remarks).toBe("掲載名はハナビ");
+    const draft = transitionPublication(requested, { action: "submit_draft", version: 2, body: "改稿", url: "" }, media);
+    const reviewed = transitionPublication(draft, publicationActionSchema.parse({ action: "review", version: 3, decision: "approve", remarks: "ハナビでお願いします" }), author);
+    expect(reviewed.history.at(-1)?.remarks).toBe("ハナビでお願いします");
+    expect(reviewed.history[0].remarks).toBe("掲載名はハナビ");
+    expect(reviewed.reviewNote).toBe("");
+    expect(publicationActionSchema.safeParse({ action: "review", version: 1, decision: "revise", remarks: "備考だけ" }).success).toBe(false);
+    expect(publicationActionSchema.safeParse({ action: "respond", version: 1, decision: "original", remarks: "a".repeat(2001) }).success).toBe(false);
+  });
+  it("accepts a prepared draft without a URL and validates optional URLs", () => {
+    const input = { channels: ["X"], reportVersion: 1, draftBody: " SNS投稿文 " };
+    expect(publicationCreateSchema.parse(input).draftBody).toBe("SNS投稿文");
+    expect(publicationCreateSchema.parse(input).draftUrl).toBe("");
+    expect(publicationCreateSchema.safeParse({ ...input, draftUrl: "javascript:alert(1)" }).success).toBe(false);
+    expect(publicationCreateSchema.safeParse({ ...input, draftBody: " ", draftUrl: "https://example.com" }).success).toBe(false);
+    expect(publicationCreateSchema.safeParse({ ...input, draftBody: "a".repeat(30001) }).success).toBe(false);
+    expect(publicationActionSchema.parse({ action: "submit_draft", version: 1, body: "改稿" })).toMatchObject({ url: "" });
+  });
+  it("validates every selected channel and builds the initial review snapshot", () => {
+    const input = { channels: ["X", "その他"], otherChannel: "広報誌", reportVersion: 1, channelDrafts: [
+      { channel: "その他", body: "広報誌の文章", url: "https://example.com/preview" },
+      { channel: "X", body: " Xの文章 " },
+    ] };
+    const parsed = publicationCreateSchema.parse(input);
+    expect(parsed.draftBody).toBe("【X】\nXの文章\n\n【その他（広報誌）】\n広報誌の文章\n\n確認用URL：https://example.com/preview");
+    expect(publicationCreateSchema.safeParse({ ...input, channelDrafts: [input.channelDrafts[0]] }).success).toBe(false);
+    expect(publicationCreateSchema.safeParse({ ...input, channelDrafts: [input.channelDrafts[0], input.channelDrafts[0]] }).success).toBe(false);
+    expect(publicationCreateSchema.safeParse({ ...input, channelDrafts: [input.channelDrafts[0], { channel: "X", body: " " }] }).success).toBe(false);
+    expect(publicationCreateSchema.safeParse({ ...input, draftBody: "共通本文" }).success).toBe(false);
+    expect(publicationCreateSchema.safeParse({ ...input, channelDrafts: [{ channel: "X", body: "a".repeat(30000) }, input.channelDrafts[0]] }).success).toBe(false);
+    expect(publicationCreateSchema.parse({ channels: ["X"], reportVersion: 1, channelDrafts: [{ channel: "X", body: "" }] }).draftBody).toBe("");
+  });
   it("allows media and admin to request, without granting members permission",()=>{
     expect(canRequestPublication(author)).toBe(false);expect(canRequestPublication(media)).toBe(true);expect(canRequestPublication(admin)).toBe(true);
   });

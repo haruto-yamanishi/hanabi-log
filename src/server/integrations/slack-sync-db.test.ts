@@ -69,7 +69,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     const media = {...actor,id:editor.id,slackUserId:editor.slack_user_id,role:'media' as const};
     const [report] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status,published_at)
       values(${author.id},'2026-10-26','Slack consent','ロボット','進捗','Original','published',now()) returning id,version`;
-    const item = await createPublication(report.id,media,{channels:['note'],otherChannel:'',message:'',reportVersion:report.version},crypto.randomUUID());
+    const item = await createPublication(report.id,media,{channels:['note'],draftBody:"",draftUrl:"",otherChannel:'',message:'',reportVersion:report.version},crypto.randomUUID());
     async function sendInteraction(payload: object, signatureValid = true) {
       const body = new URLSearchParams({payload:JSON.stringify(payload)}).toString();
       const timestamp=String(Math.floor(Date.now()/1000));
@@ -186,7 +186,7 @@ describe.skipIf(!url)("Slack sync with PostgreSQL", () => {
     const [report] = await sql`insert into reports(author_id,report_date,title,activity_area,content_category,activity_text,status,published_at)
       values(${author.id},'2026-10-24','Consent','ロボット','進捗','Original','published',now()) returning id,version`;
     const key=crypto.randomUUID();
-    const input={channels:['note' as const,'X' as const],otherChannel:'',message:'May we publish?',reportVersion:report.version};
+    const input={channels:['note' as const,'X' as const],draftBody:"",draftUrl:"",otherChannel:'',message:'May we publish?',reportVersion:report.version};
     await expect(createPublication(report.id,actor,input,key)).rejects.toMatchObject({status:403});
     const first=await createPublication(report.id,media,input,key);
     expect((await createPublication(report.id,media,input,key)).id).toBe(first.id);

@@ -36,6 +36,7 @@ function PublicationDetail({item,user,initialDecision,onUpdate}:{item:Publicatio
   const [decision,setDecision]=useState<Decision | "">(()=>initialDecision && Object.hasOwn(DECISIONS,initialDecision) ? initialDecision as Decision : "");
   const [body,setBody]=useState(item.authorBody || item.sourceBody);
   const [note,setNote]=useState("");
+  const [remarks,setRemarks]=useState("");
   const [draftBody,setDraftBody]=useState(item.draftBody || item.authorBody || item.sourceBody);
   const [draftUrl,setDraftUrl]=useState(item.draftUrl);
   const [busy,setBusy]=useState(false);
@@ -47,7 +48,7 @@ function PublicationDetail({item,user,initialDecision,onUpdate}:{item:Publicatio
     try {onUpdate(await apiRequest<PublicationRequest>(`/api/publication-requests/${item.id}`,{method:"POST",body:JSON.stringify({...action,version:item.version})}));}
     catch(error){setError(error instanceof Error ? error.message : "保存できませんでした");setBusy(false);}
   }
-  function respond(event:FormEvent){event.preventDefault();void send({action:"respond",decision,body,note});}
+  function respond(event:FormEvent){event.preventDefault();void send({action:"respond",decision,body,note,remarks});}
   return <div className="page publication-detail">
     <PageHeader title="投稿への掲載許可" backHref="/publication-requests" description={`${item.requesterName}さんから${item.authorName}さんへの依頼`} />
     <section className="publication-panel">
@@ -61,7 +62,7 @@ function PublicationDetail({item,user,initialDecision,onUpdate}:{item:Publicatio
       {item.correctionNote ? <div><h3>校正してほしい内容</h3><p className="publication-text">{item.correctionNote}</p></div>:null}
       {item.authorBody ? <details><summary>日報投稿者が校正した本文</summary><pre className="publication-text">{item.authorBody}</pre></details>:null}
       {item.reviewNote ? <div><h3>最終確認のコメント</h3><p className="publication-text">{item.reviewNote}</p></div>:null}
-      {item.status==="approved" ? <p className="notice-banner">{item.decision==="original" ? "依頼時の原文を編集せず、選択された掲載先へ公開できます。" : "最終確認した投稿本文とURLで、選択された掲載先へ公開できます。"}</p>:null}
+      {item.status==="approved" ? <p className="notice-banner">{item.decision==="original" ? "依頼時の原文を編集せず、選択された掲載先へ公開できます。" : "最終確認した投稿本文で、選択された掲載先へ公開できます。"}</p>:null}
       {item.notifications?.map((dm,index)=><p key={index} className="publication-help">{dm.recipientName}さんへのDM：{dm.status==="sent"?"送信済み":dm.status==="failed"?"送信を確認できていません。再送を待っています（管理画面で送信履歴を確認できます）。":"送信待ち"}</p>)}
     </section>
     {error ? <p className="inline-error" role="alert">{error} <button type="button" onClick={()=>window.location.reload()}>最新の状態を読み込む</button></p>:null}
@@ -70,19 +71,21 @@ function PublicationDetail({item,user,initialDecision,onUpdate}:{item:Publicatio
       {decision==="self_edit" ? <label>校正した投稿本文<textarea aria-label="校正した投稿本文" required rows={14} maxLength={30000} value={body} onChange={event=>setBody(event.target.value)} /></label>:null}
       {decision==="request_edit" ? <label>校正を依頼する内容<textarea aria-label="校正を依頼する内容" required rows={5} maxLength={4000} value={note} onChange={event=>setNote(event.target.value)} placeholder="伏せたい名前、削除したい部分、言い換えてほしい内容など" /></label>:null}
       {decision==="self_edit" || decision==="request_edit" ? <p>担当者が用意した投稿本文と確認用URLを、公開前にもう一度確認できます。元の日報は変更されません。</p>:null}
+      <label>備考（任意）<textarea aria-label="備考（任意）" rows={3} maxLength={2000} value={remarks} onChange={event=>setRemarks(event.target.value)} placeholder="掲載時のニックネーム、ご希望、依頼者への連絡事項など" /></label>
       <button className="button button--primary" type="submit" disabled={busy || !decision}>{busy?"送信中…":"この内容で返事を送る"}</button>
     </form>:null}
     {editor && ["awaiting_draft","changes_requested"].includes(item.status) ? <form className="publication-panel publication-form" onSubmit={event=>{event.preventDefault();void send({action:"submit_draft",body:draftBody,url:draftUrl});}}><h2>投稿本文・URLを確認してもらう</h2>
-      <p>公開前の共有プレビューURLなど、日報を書いた人が確認できるURLを指定してください。</p>
+      <p>公開前の共有プレビューURLなど、日報を書いた人が確認できるURLがあれば指定してください。</p>
       <label>確認用の投稿本文<textarea aria-label="確認用の投稿本文" required maxLength={30000} rows={14} value={draftBody} onChange={event=>setDraftBody(event.target.value)} /></label>
-      <label>確認用URL<input required type="url" maxLength={2000} value={draftUrl} onChange={event=>setDraftUrl(event.target.value)} placeholder="https://…" /></label>
+      <label>確認用URL（任意）<input type="url" maxLength={2000} value={draftUrl} onChange={event=>setDraftUrl(event.target.value)} placeholder="https://…" /></label>
       <button className="button button--primary" type="submit" disabled={busy}>{busy?"送信中…":"投稿本文とURLをDMで送る"}</button>
     </form>:null}
-    {item.draftBody ? <section className="publication-panel"><h2>確認用の投稿本文</h2><pre className="publication-text">{item.draftBody}</pre><a className="button button--secondary" href={item.draftUrl} target="_blank" rel="noreferrer">確認用URLを開く ↗</a></section>:null}
+    {item.draftBody ? <section className="publication-panel"><h2>確認用の投稿本文</h2><pre className="publication-text">{item.draftBody}</pre>{item.draftUrl ? <a className="button button--secondary" href={item.draftUrl} target="_blank" rel="noreferrer">確認用URLを開く ↗</a> : null}</section>:null}
     {author && item.status==="awaiting_review" ? <section className="publication-panel publication-form"><h2>投稿本文・URLの最終確認</h2>
       <label>修正してほしい内容・コメント<textarea aria-label="修正してほしい内容・コメント" rows={4} maxLength={4000} value={note} onChange={event=>setNote(event.target.value)} /></label>
-      <div className="publication-actions"><button type="button" className="button button--primary" disabled={busy} onClick={()=>void send({action:"review",decision:"approve",note})}>この投稿本文・URLで公開を許可する</button><button type="button" className="button button--secondary" disabled={busy || !note.trim()} onClick={()=>void send({action:"review",decision:"revise",note})}>修正を依頼する</button><button type="button" className="button button--ghost button--danger" disabled={busy} onClick={()=>void send({action:"review",decision:"reject",note})}>公開を拒否する</button></div>
+      <label>備考（任意）<textarea aria-label="備考（任意）" rows={3} maxLength={2000} value={remarks} onChange={event=>setRemarks(event.target.value)} placeholder="掲載時のニックネーム、ご希望、依頼者への連絡事項など" /></label>
+      <div className="publication-actions"><button type="button" className="button button--primary" disabled={busy} onClick={()=>void send({action:"review",decision:"approve",note,remarks})}>受け取った投稿本文の公開を許可する</button><button type="button" className="button button--secondary" disabled={busy || !note.trim()} onClick={()=>void send({action:"review",decision:"revise",note,remarks})}>修正を依頼する</button><button type="button" className="button button--ghost button--danger" disabled={busy} onClick={()=>void send({action:"review",decision:"reject",note,remarks})}>公開を拒否する</button></div>
     </section>:null}
-    <section className="publication-panel"><h2>依頼・校正の履歴</h2><ol className="publication-history">{item.history.map(event=><li key={event.version}><strong>{event.action}</strong><p>{event.actorName} · {formatDateTime(event.at)}</p>{event.note?<p className="publication-text">{event.note}</p>:null}{event.body?<details><summary>この時点の本文・URL</summary><pre className="publication-text">{event.body}</pre>{event.url?<a href={event.url} target="_blank" rel="noreferrer">{event.url}</a>:null}</details>:null}</li>)}</ol></section>
+    <section className="publication-panel"><h2>依頼・校正の履歴</h2><ol className="publication-history">{item.history.map(event=><li key={event.version}><strong>{event.action}</strong><p>{event.actorName} · {formatDateTime(event.at)}</p>{event.note?<p className="publication-text">{event.note}</p>:null}{event.remarks?<div><h3>備考</h3><p className="publication-text">{event.remarks}</p></div>:null}{event.body?<details><summary>この時点の本文・URL</summary><pre className="publication-text">{event.body}</pre>{event.url?<a href={event.url} target="_blank" rel="noreferrer">{event.url}</a>:null}</details>:null}</li>)}</ol></section>
   </div>;
 }

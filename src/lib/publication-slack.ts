@@ -27,7 +27,7 @@ export function publicationButton(id: string, intent: PublicationIntent, label: 
 }
 function choices(item: PublicationRequest, actor: CurrentUser): [PublicationIntent, string][] {
   if (item.authorId === actor.id && item.status === "pending") return Object.entries(DECISIONS) as [PublicationIntent, string][];
-  if (item.authorId === actor.id && item.status === "awaiting_review") return [["approve", "この投稿本文・URLで公開を許可する"], ["revise", "修正を依頼する"], ["review_reject", "公開を拒否する"]];
+  if (item.authorId === actor.id && item.status === "awaiting_review") return [["approve", "受け取った投稿本文の公開を許可する"], ["revise", "修正を依頼する"], ["review_reject", "公開を拒否する"]];
   if (canRequestPublication(actor) && (item.requesterId === actor.id || actor.role === "admin") && ["awaiting_draft", "changes_requested"].includes(item.status)) return [["submit_draft", "投稿本文とURLを確認してもらう"]];
   return [];
 }
@@ -53,10 +53,12 @@ export function publicationModal(item: PublicationRequest, actor: CurrentUser, r
   const intent = options.some(([key]) => key === requestedIntent) ? requestedIntent : "details";
   const blocks = textBlocks(`「${item.title}」\n掲載先：${item.channels.map(channel => channel === "その他" ? `その他（${item.otherChannel}）` : channel).join("・")}\n${item.requesterName} → ${item.authorName}\n状態：${PUBLICATION_STATUS[item.status]}\n${item.message}\n依頼時の日報本文・添付が対象です。コメントは含みません。`);
   const editing = intent === "self_edit" || intent === "submit_draft";
-  if (!editing) blocks.push(...textBlocks(item.draftBody ? `確認用の投稿本文\n${item.draftBody}\n\n確認用URL\n${item.draftUrl}` : `依頼時の日報本文\n${item.sourceBody}`));
+  if (!editing) blocks.push(...textBlocks(item.draftBody ? `確認用の投稿本文\n${item.draftBody}${item.draftUrl ? `\n\n確認用URL\n${item.draftUrl}` : ""}` : `依頼時の日報本文\n${item.sourceBody}`));
   if (item.sourceMedia.length) blocks.push(...textBlocks(`対象の添付：\n${item.sourceMedia.map(file => file.filename).join("\n")}`));
   if (item.correctionNote) blocks.push(...textBlocks(`校正してほしい内容：\n${item.correctionNote}`));
   if (item.reviewNote) blocks.push(...textBlocks(`最終確認のコメント：\n${item.reviewNote}`));
+  const latestRemarks = item.history.findLast(event => event.remarks);
+  if (latestRemarks) blocks.push(...textBlocks(`前回までの備考（${latestRemarks.actorName}）：\n${latestRemarks.remarks}`));
   let bodyParts = 1;
   if (editing) {
     const body = intent === "self_edit" ? item.sourceBody : item.draftBody || item.authorBody || item.sourceBody;
@@ -66,11 +68,14 @@ export function publicationModal(item: PublicationRequest, actor: CurrentUser, r
     blocks.push(...textBlocks("本文が長い場合は続きの入力欄を追加できます。各欄はそのまま連結されます。改行は本文に入力してください。"));
     for (let index = 0; index < bodyParts; index++) blocks.push(input(`body_${index}`, index ? `投稿本文の続き（${index + 1}）` : "投稿本文", chunks[index] ?? "", index > 0));
     if (bodyParts < 11) blocks.push({ type: "actions", elements: [{ type: "button", text: plain("続きの入力欄を追加"), action_id: PUBLICATION_SLACK_MORE, value: "more" }] });
-    if (intent === "submit_draft") blocks.push(input("url", "確認用URL（https://…）", item.draftUrl, false, 2000));
+    if (intent === "submit_draft") blocks.push(input("url", "確認用URL（任意・https://…）", item.draftUrl, true, 2000));
   }
   if (["request_edit", "revise", "approve", "review_reject", "reject"].includes(intent)) {
     blocks.push(input("note_0", intent === "request_edit" ? "校正してほしい内容" : "コメント・修正してほしい内容", "", !["request_edit", "revise"].includes(intent)));
     blocks.push(input("note_1", "コメントの続き（任意）", "", true, 1000));
+  }
+  if (["original", "self_edit", "request_edit", "reject", "approve", "revise", "review_reject"].includes(intent)) {
+    blocks.push(input("remarks", "備考（任意・掲載時のニックネームなど）", "", true, 2000));
   }
   if (intent === "details") {
     for (const [key, label] of options) blocks.push({ type: "actions", elements: [publicationButton(item.id, key, label)] });
@@ -83,7 +88,8 @@ export function publicationActionFromModal(metadata: PublicationModalData, value
   const value = (key: string) => values[key]?.value?.value ?? "";
   const body = Array.from({ length: metadata.bodyParts }, (_, index) => value(`body_${index}`)).join("");
   const note = value("note_0") + value("note_1");
+  const remarks = value("remarks");
   if (metadata.intent === "submit_draft") return publicationActionSchema.parse({ action: "submit_draft", version: metadata.version, body, url: value("url") });
-  if (["approve", "revise", "review_reject"].includes(metadata.intent)) return publicationActionSchema.parse({ action: "review", version: metadata.version, decision: metadata.intent === "review_reject" ? "reject" : metadata.intent, note });
-  return publicationActionSchema.parse({ action: "respond", version: metadata.version, decision: metadata.intent, body, note });
+  if (["approve", "revise", "review_reject"].includes(metadata.intent)) return publicationActionSchema.parse({ action: "review", version: metadata.version, decision: metadata.intent === "review_reject" ? "reject" : metadata.intent, note, remarks });
+  return publicationActionSchema.parse({ action: "respond", version: metadata.version, decision: metadata.intent, body, note, remarks });
 }

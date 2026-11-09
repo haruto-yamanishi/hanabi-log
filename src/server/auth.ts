@@ -64,7 +64,8 @@ export const googleLoginEnabled = Boolean(
 
 export const authOptions: NextAuthOptions = {
   secret: env.AUTH_SECRET || (isDemoMode ? "hanabi-log-local-demo-secret" : undefined),
-  session: { strategy: "jwt", maxAge: 60 * 60 * 48 },
+  // Keep login sessions for approximately six months (180 days).
+  session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 180 },
   pages: { signIn: "/login", error: "/login" },
   providers: isDemoMode
     ? [
