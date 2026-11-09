@@ -145,3 +145,24 @@ describe("SlackCommentService", () => {
       .resolves.toEqual([]);
   });
 });
+
+it("retains image-only and video-only replies", async () => {
+  const client = api();
+  vi.mocked(client.listReplies).mockResolvedValue([{ ts: "1787200001.000100", text: "", userId: "U123ABC", files: [
+    { id: "F1", name: "image.png", mimetype: "image/png" },
+    { id: "F2", name: "clip.mp4", mimetype: "video/mp4" },
+  ] }]);
+  const comments = await new SlackCommentService(client).list({ channel: "C1", threadTs: "1787200000.000000", members: [member] });
+  expect(comments).toHaveLength(1);
+  expect(comments[0].attachments?.map(file => file.id)).toEqual(["F1", "F2"]);
+});
+
+it("does not reimport report video deliveries as comments", async () => {
+  const client = api();
+  vi.mocked(client.listReplies).mockResolvedValue([
+    { ts: '123.1', text: '日報の添付動画（Hanabi Log）', files: [{id:'FVIDEO',name:'hanabi-log-20000000-0000-4000-8000-000000000001-1234567890abcdef.mp4',mimetype:'video/mp4'}] },
+    { ts: '123.2', text: '', userId: 'U123ABC', files: [{id:'FREPLY',name:'reply.mp4',mimetype:'video/mp4'}] },
+  ]);
+  const result = await new SlackCommentService(client).list({ channel: 'C1', threadTs: '123', members: [member] });
+  expect(result.map(comment=>comment.id)).toEqual(['123.2']);
+});

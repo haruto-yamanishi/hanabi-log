@@ -12,7 +12,8 @@ const timestampSchema = z.string().regex(/^\d+\.\d+$/);
 
 const messageSchema = z.object({
   type: z.literal("message"), channel: z.string().min(1), user: z.string().min(1),
-  ts: timestampSchema, edited: z.object({ ts: timestampSchema }).optional(), text: z.string().trim().min(1),
+  ts: timestampSchema, edited: z.object({ ts: timestampSchema }).optional(), text: z.string().trim().default(""),
+  files: z.array(z.object({ id: z.string(), mimetype: z.string().optional() })).optional(),
   subtype: z.string().optional(), bot_id: z.string().optional(), thread_ts: z.string().optional(),
 });
 
@@ -29,6 +30,8 @@ export function incomingSlackMessage(event: unknown, channelId: string) {
   if (message.channel !== channelId || message.bot_id ||
       (message.subtype && message.subtype !== "file_share") ||
       (message.thread_ts && message.thread_ts !== message.ts)) return null;
+  if (!message.text && !message.files?.some(file => /^(image|video)\//.test(file.mimetype ?? ""))) return null;
+  if (!message.text) message.text = "画像・動画の活動記録";
   if (change.success && !message.edited) return null;
   return { ...message, eventTs: message.edited?.ts ?? message.ts, changed: change.success };
 }

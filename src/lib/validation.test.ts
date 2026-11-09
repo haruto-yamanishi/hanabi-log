@@ -66,8 +66,8 @@ describe("reportInputSchema", () => {
     }).success).toBe(false);
   });
 
-  it("rejects unsupported image and video formats on the server", () => {
+  it("accepts MOV videos while rejecting unsupported images", () => {
     expect(uploadRequestSchema.safeParse({ filename: "photo.heic", mimeType: "image/heic", sizeBytes: 1024 }).success).toBe(false);
-    expect(uploadRequestSchema.safeParse({ filename: "clip.mov", mimeType: "video/quicktime", sizeBytes: 1024 }).success).toBe(false);
+    expect(uploadRequestSchema.safeParse({ filename: "clip.mov", mimeType: "video/quicktime", sizeBytes: 1024 }).success).toBe(true);
   });
 });

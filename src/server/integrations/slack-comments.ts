@@ -10,13 +10,14 @@ import { IntegrationError } from "@/server/integrations/errors";
 import { SLACK_FULL_REPORT_EVENT_TYPE } from "@/server/integrations/slack";
 
 const WEB_COMMENT_EVENT = "hanabi_log_web_comment";
-const MAX_REPLIES = 500;
+
 
 export interface SlackThreadReply {
   ts: string;
   text: string;
   userId?: string;
   botName?: string;
+  files?: { id?: string; name?: string; mimetype?: string }[];
   blocks?: unknown[];
   metadata?: {
     eventType?: string;
@@ -98,7 +99,8 @@ export class SlackCommentService {
     threadTs: string;
     members: Member[];
   }): Promise<ReportComment[]> {
-    const replies = await this.api.listReplies(input);
+    const replies = (await this.api.listReplies(input)).filter(reply => !(reply.text === "日報の添付動画（Hanabi Log）"
+      && reply.files?.length && reply.files.every(file => /^hanabi-log-[0-9a-f-]{36}-[0-9a-f]{16}\.(mp4|webm|mov)$/.test(file.name ?? ""))));
     const memberById = new Map(input.members.map((member) => [member.id, member]));
     const memberBySlackId = new Map(
       input.members.map((member) => [member.slackUserId, member]),
@@ -129,7 +131,8 @@ export class SlackCommentService {
       const body = fromWeb
         ? webCommentBody(reply)
         : normalizeSlackText(reply.text, memberBySlackId, profiles);
-      if (!body) return [];
+      const attachments = (reply.files ?? []).flatMap(file => file.id && /^(image|video)\//.test(file.mimetype ?? "") ? [{ id: file.id, filename: file.name || "添付ファイル", mimeType: file.mimetype! }] : []);
+      if (!body && !attachments.length) return [];
 
       let author: ReportCommentAuthor;
       if (fromWeb) {
@@ -147,13 +150,14 @@ export class SlackCommentService {
         author = member
           ? { id: member.id, displayName: member.displayName, avatarUrl: member.avatarUrl ?? null }
           : profile
-            ? { displayName: profile.displayName, avatarUrl: profile.avatarUrl ?? null }
-            : { displayName: reply.botName || "Slackメンバー", avatarUrl: null };
+            ? { displayName: profile.displayName, avatarUrl: profile.avatarUrl ?? null, slackUserId: profile.slackUserId }
+            : { displayName: reply.botName || "Slackメンバー", avatarUrl: null, ...(reply.userId ? { slackUserId: reply.userId } : {}) };
       }
 
       return [{
         id: reply.ts,
-        body,
+        ...(attachments.length ? { attachments } : {}),
+        body: body || "",
         createdAt: timestampToIso(reply.ts),
         source: fromWeb ? "web" : "slack",
         author,
@@ -189,6 +193,7 @@ interface SlackMessageRecord {
   text?: string;
   user?: string;
   bot_profile?: { name?: string };
+  files?: { id?: string; name?: string; mimetype?: string }[];
   blocks?: unknown[];
   metadata?: { event_type?: string; event_payload?: Record<string, unknown> };
 }
@@ -224,6 +229,7 @@ export class SlackWebCommentAdapter implements SlackCommentApiPort {
           userId: message.user,
           botName: message.bot_profile?.name,
           blocks: message.blocks,
+          files: message.files,
           metadata: message.metadata
             ? {
                 eventType: message.metadata.event_type,
@@ -231,9 +237,10 @@ export class SlackWebCommentAdapter implements SlackCommentApiPort {
               }
             : undefined,
         });
-        if (replies.length >= MAX_REPLIES) return replies;
+
       }
       cursor = result.response_metadata?.next_cursor || undefined;
+      if (result.has_more && !cursor) throw new IntegrationError("SLACK_REPLIES_INCOMPLETE", { retryable: true });
     } while (cursor);
     return replies;
   }

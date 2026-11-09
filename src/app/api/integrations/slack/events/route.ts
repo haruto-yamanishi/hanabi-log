@@ -1,3 +1,8 @@
+import { isBingoAnnouncement, processBingoNotifications } from "@/server/integrations/halloween-bingo";
+import { processMentionNotifications } from "@/server/integrations/mention-notifications";
+export const maxDuration = 300;
+import { replyThread } from "@/server/integrations/slack-reply-event";
+import { syncCommentMedia } from "@/server/integrations/comment-media-sync";
 import { after } from "next/server";
 import { env, isDemoMode } from "@/server/env";
 import { getDatabase } from "@/server/db/client";
@@ -16,16 +21,25 @@ export async function POST(request: Request): Promise<Response> {
   if (!payload || typeof payload !== "object") return new Response(null, { status: 400 });
   if (payload.type === "url_verification" && typeof payload.challenge === "string") return Response.json({ challenge: payload.challenge });
   if (payload.team_id !== env.SLACK_TEAM_ID) return new Response(null, { status: 403 });
+  if (payload.type === "event_callback" && payload.event?.bot_id && isBingoAnnouncement(payload.event?.text)) {
+    after(async () => {
+      try { await processBingoNotifications(); }
+      catch { console.error("Bingo announcement delivery retained for cron retry"); }
+    });
+  }
   const message = payload.type === "event_callback" ? incomingSlackMessage(payload.event, env.SLACK_CHANNEL_ID) : null;
   const reaction = payload.type === "event_callback" ? incomingSlackReaction(payload.event, env.SLACK_CHANNEL_ID) : null;
-  if (message || reaction) {
+  const thread = payload.type === "event_callback" ? replyThread(payload.event, env.SLACK_CHANNEL_ID) : null;
+  if (message || reaction || thread) {
     const sql = getDatabase();
     const retryEnabled = slackIngestionRetryEnabled();
+    if (thread) await sql`update integration_bindings set comment_media_sync_requested_at=now() where slack_channel_id=${env.SLACK_CHANNEL_ID} and slack_message_ts=${thread}`;
     if (message) {
       if (retryEnabled) {
-        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts)
-          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs})
+        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts, file_ids)
+          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs}, ${sql.json((message.files ?? []).filter(file => /^(image|video)\//.test(file.mimetype ?? "")).map(file => file.id))})
           on conflict (channel_id, message_ts) do update set
+            file_ids = excluded.file_ids, media_imported_at = null,
             body = excluded.body,
             event_ts = excluded.event_ts,
             processed_at = null,
@@ -36,9 +50,10 @@ export async function POST(request: Request): Promise<Response> {
           where slack_incoming_reports.event_ts < excluded.event_ts
             and slack_incoming_reports.user_id = excluded.user_id`;
       } else {
-        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts)
-          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs})
+        await sql`insert into slack_incoming_reports (channel_id, message_ts, user_id, body, event_ts, file_ids)
+          values (${message.channel}, ${message.ts}, ${message.user}, ${message.text}, ${message.eventTs}, ${sql.json((message.files ?? []).filter(file => /^(image|video)\//.test(file.mimetype ?? "")).map(file => file.id))})
           on conflict (channel_id, message_ts) do update set
+            file_ids = excluded.file_ids, media_imported_at = null,
             body = excluded.body, event_ts = excluded.event_ts, processed_at = null
           where slack_incoming_reports.event_ts < excluded.event_ts
             and slack_incoming_reports.user_id = excluded.user_id`;
@@ -68,8 +83,11 @@ export async function POST(request: Request): Promise<Response> {
     after(async () => {
       try {
         await processIncomingSlackReports();
+        await syncCommentMedia();
         await processLikeNotifications();
         await processPendingJobs();
+        await processMentionNotifications();
+        await processBingoNotifications();
       } catch { console.error("Deferred Slack import failed; retained for cron retry"); }
     });
   }

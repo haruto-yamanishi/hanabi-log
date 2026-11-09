@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createCspHeader, cspHeaderName } from "@/lib/security/csp";
 
-const PROTECTED_PATHS = ["/reports", "/new", "/archive", "/me", "/admin"];
+const PROTECTED_PATHS = ["/reports", "/new", "/archive", "/me", "/admin", "/media", "/publication-requests"];
 
 function localDemoMode(): boolean {
   if (process.env.NODE_ENV === "production") return false;

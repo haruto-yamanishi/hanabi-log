@@ -1,4 +1,5 @@
 import "server-only";
+import { sendSystemDm } from "@/server/integrations/system-dm";
 import { WebClient } from "@slack/web-api";
 import { getDatabase } from "@/server/db/client";
 import { env, isDemoMode } from "@/server/env";
@@ -281,11 +282,11 @@ export async function processContributionNudges(): Promise<ContributionNudgeResu
 
     const text = renderContributionNudge(recommendation);
     try {
-      const message = await client.chat.postMessage({
-        channel: member.slack_user_id,
-        text,
-        unfurl_links: false,
-        unfurl_media: false,
+      const message = await sendSystemDm(client, {
+        dedupeKey: `nudge:${member.id}:${key}`,
+        kind: "contribution_nudge", recipientSlackUserId: member.slack_user_id,
+        recipientName: member.display_name, text,
+        reportId: recommendation.id, reportTitle: recommendation.title,
       });
       await recordDelivery(sql, {
         member,

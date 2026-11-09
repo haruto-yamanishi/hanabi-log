@@ -145,6 +145,22 @@ describe("SlackReportService", () => {
     };
   }
 
+  it("persists the parent before uploading videos and keeps that parent on failure", async () => {
+    const client = api();
+    const steps: string[] = [];
+    const persist = vi.fn(async () => { steps.push("persist"); });
+    const videos = vi.fn(async (): Promise<void> => { steps.push("video"); throw new Error("upload failed"); });
+    const service = new SlackReportService(client, "C1", "https://log.test", undefined, persist, videos);
+    const result = await service.sync(report(), null);
+    expect(steps).toEqual(["persist", "video"]);
+    expect(result).toMatchObject({ channelId: "C1", messageTs: "100.1", operation: "posted", followupFailure: { retryable: true } });
+    videos.mockResolvedValueOnce(undefined);
+    const binding = { slackChannelId: "C1", slackMessageTs: "100.1" } as IntegrationBinding;
+    await service.sync(report(), binding);
+    expect(client.postMessage).toHaveBeenCalledTimes(2); // parent + body, no new parent on retry
+    expect(videos).toHaveBeenLastCalledWith(expect.anything(), "C1", "100.1");
+  });
+
   it("posts the card and complete body thread, then resolves the root permalink", async () => {
     const client = api();
     const service = new SlackReportService(
@@ -356,4 +372,45 @@ it("keeps a member's original Slack post intact during Web edits and deletion", 
   expect(api.postMessage).not.toHaveBeenCalled();
   expect(api.updateMessage).not.toHaveBeenCalled();
   expect(api.deleteMessage).not.toHaveBeenCalled();
+});
+
+describe("delivery recovery", () => {
+  it("recovers a previously posted card instead of publishing a duplicate", async () => {
+    const api: SlackApiPort = {
+      findReportMessage: vi.fn().mockResolvedValue("100.001"),
+      postMessage: vi.fn(), updateMessage: vi.fn(), deleteMessage: vi.fn(),
+      getPermalink: vi.fn().mockResolvedValue("https://slack.test/recovered"), getReplyCount: vi.fn(),
+    };
+    const persist = vi.fn();
+    const service = new SlackReportService(api, "C1", "https://log.test", undefined, persist);
+    await service.sync(report({ attachments: [] }), null);
+    expect(api.postMessage).not.toHaveBeenCalled();
+    expect(api.updateMessage).toHaveBeenCalledWith(expect.objectContaining({ ts: "100.001" }));
+    expect(persist).toHaveBeenCalledWith("report-1", "C1", "100.001");
+  });
+
+  it("persists the parent immediately before attempting the full-report reply", async () => {
+    const calls: string[] = [];
+    const api: SlackApiPort = {
+      postMessage: vi.fn(async input => { calls.push(input.threadTs ? "reply" : "parent"); return { channel: "C1", ts: "100.001" }; }),
+      updateMessage: vi.fn(), deleteMessage: vi.fn(), getPermalink: vi.fn().mockResolvedValue("https://slack.test"), getReplyCount: vi.fn(),
+    };
+    const service = new SlackReportService(api, "C1", "https://log.test", undefined, async () => { calls.push("persist"); });
+    await service.sync(report(), null);
+    expect(calls).toEqual(["parent", "persist", "reply"]);
+  });
+
+  it("renders selected member mentions but escapes broadcast syntax", () => {
+    const payload = renderSlackFullReport(report({ activityText: "@[山田](slack:U123ABC) <!channel>" }));
+    expect(JSON.stringify(payload)).toContain("<@U123ABC>");
+    expect(JSON.stringify(payload)).toContain("&lt;!channel&gt;");
+  });
+});
+it("renders selected user groups as Slack subteam mentions without allowing raw broadcasts", () => {
+  const payload = renderSlackFullReport(report({ activityText: "@[ロボット](slack:S123ABC) @[山田](slack:U123ABC) <!channel>" }));
+  const text = JSON.stringify(payload);
+  expect(text).toContain("<!subteam^S123ABC>");
+  expect(text).toContain("<@U123ABC>");
+  expect(text).toContain("&lt;!channel&gt;");
+  expect(text).not.toContain("slack:S123ABC");
 });

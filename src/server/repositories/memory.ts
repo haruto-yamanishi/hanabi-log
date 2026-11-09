@@ -412,7 +412,8 @@ export class MemoryReportRepository implements ReportRepository {
 
   async listReports(filters: ReportFilters, actor: CurrentUser): Promise<ReportPage> {
     const cursor = filters.cursor ? decodeReportCursor(filters.cursor) : null;
-    if (filters.cursor && !cursor) {
+    const sort = filters.sort ?? "newest";
+    if (filters.cursor && (!cursor || cursor.sort !== sort)) {
       throw new AppError("INVALID_CURSOR", "ページ情報が正しくありません", 422);
     }
     const query = filters.q?.toLocaleLowerCase("ja") ?? "";
@@ -441,16 +442,19 @@ export class MemoryReportRepository implements ReportRepository {
           .toLocaleLowerCase("ja")
           .includes(query);
       })
-      .sort((left, right) =>
-        (right.publishedAt ?? right.updatedAt).localeCompare(left.publishedAt ?? left.updatedAt) ||
-        right.id.localeCompare(left.id),
-      )
-      .filter(
-        (report) =>
-          !cursor ||
-          (report.publishedAt ?? report.updatedAt) < cursor.sortAt ||
-          ((report.publishedAt ?? report.updatedAt) === cursor.sortAt && report.id < cursor.id),
-      );
+      .sort((left, right) => {
+        const chronological = (right.publishedAt ?? right.updatedAt).localeCompare(left.publishedAt ?? left.updatedAt) || right.id.localeCompare(left.id);
+        if (sort === "oldest") return -chronological;
+        if (sort === "popular") return (reportListItem(right, actor.id).likeCount ?? 0) - (reportListItem(left, actor.id).likeCount ?? 0) || chronological;
+        return chronological;
+      })
+      .filter(report => {
+        if (!cursor) return true;
+        const chronological = (report.publishedAt ?? report.updatedAt).localeCompare(cursor.sortAt) || report.id.localeCompare(cursor.id);
+        const likes = reportListItem(report, actor.id).likeCount ?? 0;
+        if (sort === "popular" && likes !== cursor.likeCount) return likes < cursor.likeCount;
+        return sort === "oldest" ? chronological > 0 : chronological < 0;
+      });
     const limit = filters.limit ?? 20;
     const page = reports.slice(0, limit);
     const last = page.at(-1);
@@ -458,7 +462,7 @@ export class MemoryReportRepository implements ReportRepository {
       reports: page.map((report) => reportListItem(report, actor.id, actor.role === "admin" && filters.includeIntegration)),
       nextCursor:
         reports.length > page.length && last
-          ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id)
+          ? encodeReportCursor(last.publishedAt ?? last.updatedAt, last.id, sort, reportListItem(last, actor.id).likeCount)
           : null,
     };
   }

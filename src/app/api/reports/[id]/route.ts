@@ -1,3 +1,5 @@
+export const maxDuration = 300;
+
 import { canDeleteReport } from "@/lib/authorization";
 import { deleteReportAttachments } from "@/server/db/storage";
 import { reportPatchSchema } from "@/lib/validation";

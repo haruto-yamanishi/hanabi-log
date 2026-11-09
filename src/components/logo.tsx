@@ -1,3 +1,4 @@
+import { HalloweenScene } from "@/components/seasonal/halloween-scene";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -5,6 +6,7 @@ export function HanabiMark({ compact = false }: { compact?: boolean }) {
   return (
     <Link aria-label="Hanabi Log ホーム" className={`brand${compact ? " brand--compact" : ""}`} href="/">
       <HanabiLogo decorative />
+      <HalloweenScene variant="brand" />
     </Link>
   );
 }

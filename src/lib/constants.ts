@@ -30,6 +30,7 @@ export const CONTENT_CATEGORIES = [
   "調査・学び",
   "課題・相談",
   "会議・共有",
+  "留学・進路",
   "成果",
   "次のアクション",
 ] as const;

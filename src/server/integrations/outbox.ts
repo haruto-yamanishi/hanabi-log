@@ -562,13 +562,15 @@ async function getRuntimeProcessor(): Promise<OutboxProcessor | undefined> {
     // Next.js `server-only` runtime module.
     const [
       { getOutboxRepository },
-      { signReportAttachments },
+      { prepareSlackAttachments },
+      { createSlackVideoSync },
       { createNotionFileDependencies },
       { createOAuthNotionIntegration },
     ] =
       await Promise.all([
         import("@/server/repositories"),
-        import("@/server/db/storage"),
+        import("@/server/integrations/slack-media"),
+        import("@/server/integrations/slack-videos"),
         import("@/server/integrations/notion-files"),
         import("@/server/integrations/notion-oauth"),
       ]);
@@ -578,7 +580,9 @@ async function getRuntimeProcessor(): Promise<OutboxProcessor | undefined> {
         token: slackToken,
         channelId: slackChannelId,
         appBaseUrl,
-        prepareReport: (report) => signReportAttachments(report, appBaseUrl),
+        prepareReport: (report) => prepareSlackAttachments(report, appBaseUrl),
+        syncVideos: createSlackVideoSync(slackToken),
+        persistPosted: (reportId, channelId, messageTs) => getOutboxRepository().saveSlackBinding(reportId, { channelId, messageTs, status: "partial", errorCode: null }),
       }),
       notion: createOAuthNotionIntegration({
         appBaseUrl,

@@ -55,7 +55,7 @@ describe("video attachment integrations", () => {
     const serialized = JSON.stringify(payload.blocks);
     expect(serialized).toContain("https://storage.example.test/photo.webp");
     expect(serialized).not.toContain("https://storage.example.test/run.mp4");
-    expect(serialized).toContain("動画 1 件は日報ページで再生できます。");
+    expect(serialized).toContain("動画 1 件はこの投稿のスレッドに添付します。日報ページでも再生できます。");
   });
 
   it("does not turn a video-only report into a partial Notion sync", async () => {

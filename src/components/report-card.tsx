@@ -1,5 +1,7 @@
 "use client";
 
+import { displayMentions } from "@/lib/text";
+
 import Link from "next/link";
 import { useState } from "react";
 import type { ReportLikeSummary, ReportListItem } from "@/lib/types";
@@ -92,7 +94,7 @@ export function ReportCard({ report, showStatus = false }: { report: ReportListI
           <ArrowRightIcon className="report-card__arrow" />
         </div>
         <h3>{report.title}</h3>
-        {report.summary ? <p className="report-card__summary">{report.summary}</p> : null}
+        {report.summary ? <p className="report-card__summary">{displayMentions(report.summary)}</p> : null}
         {report.themeTags.length ? (
           <ul aria-label="テーマタグ" className="tag-list">
             {report.themeTags.slice(0, 3).map((tag) => <li key={tag}>#{tag}</li>)}

@@ -21,6 +21,12 @@ describe("Content Security Policy", () => {
     expect(header).toContain("media-src 'self' blob: https://*.supabase.co");
   });
 
+  it("allows Google profile images without broadening other resource sources", () => {
+    const directives = createCspHeader("abc123", false).split("; ");
+    expect(directives.find(value => value.startsWith("img-src "))).toContain("https://lh3.googleusercontent.com");
+    expect(directives.flatMap(value => value.split(" ")).filter(value => value === "https://lh3.googleusercontent.com")).toHaveLength(1);
+  });
+
   it("allows React development eval only in development", () => {
     const header = createCspHeader("devnonce", true);
     expect(header).toContain("'unsafe-eval'");

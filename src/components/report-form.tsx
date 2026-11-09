@@ -20,6 +20,7 @@ import { optimizeImages } from "@/lib/images/optimize-images";
 import type { Attachment, CurrentUser, RelatedLink, Report, ReportInput } from "@/lib/types";
 import { apiRequest, ClientApiError, makeIdempotencyKey } from "@/components/api-client";
 import { AlertIcon, ArrowLeftIcon, CheckIcon, ImageIcon, LinkIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
+import { SlackMentionTextarea } from "@/components/slack-mention-picker";
 import { SyncStatusPanel } from "@/components/sync-status";
 
 interface FormValues {
@@ -111,6 +112,7 @@ export function ReportForm({
   const createKey = useRef(makeIdempotencyKey("create-report"));
   const publishKey = useRef(makeIdempotencyKey("publish-report"));
   const imageController = useRef<AbortController | null>(null);
+  const previewUrls = useRef(new Set<string>());
   const uploading = imagePhase !== null;
 
   const isPublished = report?.status === "published";
@@ -127,7 +129,13 @@ export function ReportForm({
     return () => controller.abort();
   }, []);
 
-  useEffect(() => () => imageController.current?.abort(), []);
+  useEffect(() => {
+    const urls = previewUrls.current;
+    return () => {
+      imageController.current?.abort();
+      for (const url of urls) URL.revokeObjectURL(url);
+    };
+  }, []);
 
   async function deleteDraft() {
     if (!report || !currentUser || !canDeleteReport(currentUser, report) || busy || imageController.current) return;
@@ -256,6 +264,8 @@ export function ReportForm({
           altText: "",
           sortOrder: values.attachments.length + uploaded.length,
         };
+        attachment.signedUrl = URL.createObjectURL(file);
+        previewUrls.current.add(attachment.signedUrl);
         uploaded.push(attachment);
         if (item.originalSize !== null) originalSizes[attachment.storagePath] = item.originalSize;
       }
@@ -286,6 +296,8 @@ export function ReportForm({
 
   function removeAttachment(index: number) {
     if (imageController.current || busy || isArchived) return;
+    const previewUrl = values.attachments[index]?.signedUrl;
+    if (previewUrl && previewUrls.current.delete(previewUrl)) URL.revokeObjectURL(previewUrl);
     update("attachments", values.attachments.filter((_, attachmentIndex) => attachmentIndex !== index));
     setOptimizationSummary(null);
   }
@@ -416,7 +428,7 @@ export function ReportForm({
             </div>
             <div className="field">
               <div className="field__label"><label htmlFor="activityText">今日やったこと<span className="required-mark">必須</span></label><span className="counter">{values.activityText.length.toLocaleString()} / 10,000</span></div>
-              <textarea aria-describedby={inputError("activityText")} aria-invalid={Boolean(errors.activityText)} id="activityText" maxLength={10000} onChange={(event) => update("activityText", event.target.value)} placeholder="作業したこと、話したこと、決めたことをそのまま書いてOKです。" rows={8} value={values.activityText} />
+              <SlackMentionTextarea aria-describedby={inputError("activityText")} aria-invalid={Boolean(errors.activityText)} id="activityText" maxLength={10000} onValueChange={value => update("activityText", value)} placeholder="作業したこと、話したこと、決めたことをそのまま書いてOKです。" rows={8} value={values.activityText} />
               {errors.activityText ? <p className="field-error" id="activityText-error">{errors.activityText}</p> : <p className="field-help">箇条書きでも大丈夫です。未入力の要約には、この文章の先頭100文字が使われます。</p>}
             </div>
           </section>
@@ -425,7 +437,7 @@ export function ReportForm({
             <div className="form-section-heading"><span>02</span><div><h2 id="detail-heading">詳細</h2></div></div>
             <div className="field">
               <div className="field__label"><label htmlFor="summary">要約<span className="optional-mark">任意</span></label><span className="counter">{values.summary.length} / 100</span></div>
-              <textarea id="summary" maxLength={100} onChange={(event) => update("summary", event.target.value)} placeholder="空欄なら「今日やったこと」から自動で作成します" rows={2} value={values.summary} />
+              <SlackMentionTextarea id="summary" maxLength={100} onValueChange={value => update("summary", value)} placeholder="空欄なら「今日やったこと」から自動で作成します" rows={2} value={values.summary} />
             </div>
             <fieldset className="field fieldset-reset">
               <div className="field__label"><legend>テーマタグ<span className="optional-mark">任意</span></legend><span className="counter">{values.themeTags.length} / 5</span></div>
@@ -435,15 +447,15 @@ export function ReportForm({
             </fieldset>
             <div className="field">
               <div className="field__label"><label htmlFor="learningText">判断・学び<span className="optional-mark">任意</span></label><span className="counter">{values.learningText.length.toLocaleString()} / 5,000</span></div>
-              <textarea id="learningText" maxLength={5000} onChange={(event) => update("learningText", event.target.value)} placeholder="なぜそう判断した？ 次も使えそうな気づきは？" rows={5} value={values.learningText} />
+              <SlackMentionTextarea id="learningText" maxLength={5000} onValueChange={value => update("learningText", value)} placeholder="なぜそう判断した？ 次も使えそうな気づきは？" rows={5} value={values.learningText} />
             </div>
             <div className="field">
               <div className="field__label"><label htmlFor="issueText">課題・相談<span className="optional-mark">任意</span></label><span className="counter">{values.issueText.length.toLocaleString()} / 5,000</span></div>
-              <textarea id="issueText" maxLength={5000} onChange={(event) => update("issueText", event.target.value)} placeholder="困っていること、チームに聞きたいこと" rows={5} value={values.issueText} />
+              <SlackMentionTextarea id="issueText" maxLength={5000} onValueChange={value => update("issueText", value)} placeholder="困っていること、チームに聞きたいこと" rows={5} value={values.issueText} />
             </div>
             <div className="field">
               <div className="field__label"><label htmlFor="nextActionText">次のアクション<span className="optional-mark">任意</span></label><span className="counter">{values.nextActionText.length.toLocaleString()} / 5,000</span></div>
-              <textarea id="nextActionText" maxLength={5000} onChange={(event) => update("nextActionText", event.target.value)} placeholder="次に試すこと、続きを始めるときの一歩" rows={4} value={values.nextActionText} />
+              <SlackMentionTextarea id="nextActionText" maxLength={5000} onValueChange={value => update("nextActionText", value)} placeholder="次に試すこと、続きを始めるときの一歩" rows={4} value={values.nextActionText} />
             </div>
           </section>
 
@@ -454,7 +466,7 @@ export function ReportForm({
               <label className={`upload-zone${uploading ? " upload-zone--busy" : ""}`}>
                 <input accept={MEDIA_MIME_TYPES.join(",")} aria-describedby={errors.attachments ? "attachments-error image-optimization-status" : "image-optimization-status"} aria-invalid={Boolean(errors.attachments)} disabled={uploading || Boolean(busy) || isArchived || totalMediaSize >= REPORT_MEDIA_MAX_BYTES} multiple onChange={(event) => void uploadMedia(event)} type="file" />
                 <span className="upload-zone__icon"><ImageIcon /></span>
-                <span><strong>{imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "アップロードしています…" : "画像・動画を選ぶ"}</strong><small>JPEG・PNG・WebP / MP4・WebM。画像1件5MiB、動画1件{VIDEO_MAX_MIB}MiB、合計200MiBまで</small></span>
+                <span><strong>{imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "アップロードしています…" : "画像・動画を選ぶ"}</strong><small>JPEG・PNG・WebP / MP4・WebM・MOV。画像1件5MiB、動画1件{VIDEO_MAX_MIB}MiB、合計200MiBまで</small></span>
               </label>
               <p aria-live="polite" aria-atomic="true" className="field-help" id="image-optimization-status">
                 {imagePhase === "optimizing" ? "画像を最適化しています…" : uploading ? "画像・動画をアップロードしています…" : optimizationSummary ? `画像を最適化しました（今回選択した画像）：${(optimizationSummary.originalSize / 1024 / 1024).toFixed(2)} MiB → ${(optimizationSummary.optimizedSize / 1024 / 1024).toFixed(2)} MiB。動画は元ファイルのままアップロードします。` : "画像は自動でサイズを調整し、動画は元ファイルのままアップロードします。端末の元ファイルは変更されません。"}
@@ -465,8 +477,13 @@ export function ReportForm({
                   <span className="attachment-item__thumb"><ImageIcon /></span>
                   <div className="attachment-item__body">
                     <div><strong>{attachment.filename}</strong><small>{originalImageSizes[attachment.storagePath] !== undefined ? `${(originalImageSizes[attachment.storagePath] / 1024 / 1024).toFixed(2)} MiB → ` : ""}{(attachment.sizeBytes / 1024 / 1024).toFixed(2)} MiB</small></div>
-                    {isImageMimeType(attachment.mimeType) ? <label><span>画像の説明</span><input maxLength={300} onChange={(event) => updateAttachmentAlt(index, event.target.value)} placeholder="例：組み立て後の駆動系" value={attachment.altText || ""} /></label> : <small>動画は日報の詳細画面で再生できます</small>}
+                    {isImageMimeType(attachment.mimeType) ? <label><span>画像の説明</span><input maxLength={300} onChange={(event) => updateAttachmentAlt(index, event.target.value)} placeholder="例：組み立て後の駆動系" value={attachment.altText || ""} /></label> : <small>下のプレビューで動画を再生できます</small>}
                   </div>
+                  {attachment.signedUrl ? <div className="attachment-item__preview">
+                    {isVideoMimeType(attachment.mimeType) ? <video controls preload="metadata" src={attachment.signedUrl} aria-label={`${attachment.filename}のプレビュー`} /> :
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={attachment.signedUrl} alt={attachment.altText || `${attachment.filename}のプレビュー`} />}
+                  </div> : null}
                   <button aria-label={`${attachment.filename}を削除`} className="icon-button" disabled={uploading || Boolean(busy) || isArchived} onClick={() => removeAttachment(index)} type="button"><XIcon /></button>
                 </div>
               ))}</div> : null}

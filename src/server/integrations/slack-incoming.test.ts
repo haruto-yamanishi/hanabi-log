@@ -42,3 +42,9 @@ it("accepts reaction additions and removals only on channel messages", () => {
   expect(incomingSlackReaction(event, "C_OTHER")).toBeNull();
   expect(incomingSlackReaction({ ...event, item: { type: "file", file: "F1" } }, message.channel)).toBeNull();
 });
+
+it("imports a file-only parent but never turns its replies into separate reports", () => {
+  const fileOnly = { ...message, text: "", subtype: "file_share", files: [{ id: "F1", mimetype: "video/mp4" }] };
+  expect(incomingSlackMessage(fileOnly, message.channel)?.files).toEqual(fileOnly.files);
+  expect(incomingSlackMessage({ ...fileOnly, thread_ts: "1788735500.000001" }, message.channel)).toBeNull();
+});

@@ -68,7 +68,7 @@ async function ensureStorageBucketConfiguration(): Promise<void> {
         fileSizeLimit: STORAGE_BUCKET_MAX_BYTES,
         // Server-written verification records live beside media in this private bucket.
         // Keep JSON out of MEDIA_MIME_TYPES so users cannot request JSON uploads.
-        allowedMimeTypes: [...MEDIA_MIME_TYPES, "application/json"],
+        allowedMimeTypes: [...MEDIA_MIME_TYPES, "image/gif", "application/json"],
       },
     );
     if (error) {
@@ -112,6 +112,7 @@ function extension(mimeType: string): string {
   if (mimeType === "image/png") return "png";
   if (mimeType === "image/webp") return "webp";
   if (mimeType === "video/mp4") return "mp4";
+  if (mimeType === "video/quicktime") return "mov";
   return "webm";
 }
 
@@ -310,7 +311,7 @@ export async function deleteStoredUpload(storagePath: string): Promise<void> {
   if (error) throw new AppError("STORAGE_DELETE_ERROR", "添付ファイルを削除できませんでした", 502);
 }
 
-async function createSignedReadUrl(storagePath: string, origin: string): Promise<string> {
+export async function createSignedReadUrl(storagePath: string, origin: string): Promise<string> {
   if (isDemoMode) {
     const token = crypto.randomUUID();
     readGrants().set(token, { storagePath, expiresAt: Date.now() + 5 * 60_000 });

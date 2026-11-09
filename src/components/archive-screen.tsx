@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ACTIVITY_AREAS, CONTENT_CATEGORIES, THEME_TAGS } from "@/lib/constants";
 import type { PublicMember, ReportListItem, ReportPage } from "@/lib/types";
 import { apiRequest } from "@/components/api-client";
@@ -9,6 +9,7 @@ import { ReportCard } from "@/components/report-card";
 import { EmptyState, ErrorState, PageHeader, SkeletonList } from "@/components/ui";
 
 interface SearchFilters {
+  sort: string;
   q: string;
   activityArea: string;
   contentCategory: string;
@@ -20,6 +21,7 @@ interface SearchFilters {
 }
 
 const initialFilters: SearchFilters = {
+  sort: "newest",
   q: "",
   activityArea: "",
   contentCategory: "",
@@ -38,10 +40,12 @@ function filtersFromSearchParams(params: ArchiveSearchParams): SearchFilters {
     const value = params[key];
     if (typeof value === "string") result[key] = value;
   });
+  if (!["newest", "oldest", "popular"].includes(result.sort)) result.sort = "newest";
   return result;
 }
 
 const filterLabels: Record<keyof SearchFilters, string> = {
+  sort: "並び順",
   q: "キーワード",
   activityArea: "活動領域",
   contentCategory: "内容カテゴリ",
@@ -62,7 +66,13 @@ export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParam
   const [error, setError] = useState<string | null>(null);
   const [authors, setAuthors] = useState<PublicMember[]>([]);
 
+  const activeRequest = useRef<AbortController | null>(null);
+
   const loadReports = useCallback(async (cursor?: string, signal?: AbortSignal) => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    signal?.addEventListener("abort", () => controller.abort(), { once: true });
     if (cursor) setLoadingMore(true);
     else setLoading(true);
     setError(null);
@@ -72,14 +82,15 @@ export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParam
         if (value) params.set(key, value);
       });
       if (cursor) params.set("cursor", cursor);
-      const page = await apiRequest<ReportPage>(`/api/reports?${params}`, { signal });
+      const page = await apiRequest<ReportPage>(`/api/reports?${params}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setReports((current) => cursor ? [...current, ...page.reports] : page.reports);
       setNextCursor(page.nextCursor);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "検索結果を読み込めませんでした");
     } finally {
-      if (!signal?.aborted) {
+      if (!controller.signal.aborted) {
         setLoading(false);
         setLoadingMore(false);
       }
@@ -92,6 +103,7 @@ export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParam
     return () => {
       window.clearTimeout(timeout);
       controller.abort();
+      activeRequest.current?.abort();
     };
   }, [loadReports]);
 
@@ -108,7 +120,7 @@ export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParam
 
   const activeFilters = useMemo(() => (
     (Object.entries(filters) as [keyof SearchFilters, string][])
-      .filter(([key, value]) => Boolean(value) && !(key === "status" && value === "published"))
+      .filter(([key, value]) => Boolean(value) && key !== "sort" && !(key === "status" && value === "published"))
   ), [filters]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
@@ -207,7 +219,21 @@ export function ArchiveScreen({ initialSearchParams = {} }: { initialSearchParam
         <section aria-labelledby="results-heading" className="search-results">
           <div className="search-results__heading">
             <h2 id="results-heading">検索結果</h2>
-            <span>{loading ? "検索中" : `${reports.length}件`}</span>
+            <div className="archive-sort">
+              <span>{loading ? "検索中" : `${reports.length}件`}</span>
+              <label htmlFor="archive-sort">並び順</label>
+              <select id="archive-sort" value={filters.sort} onChange={event => {
+                const sort = event.target.value;
+                const next = { ...filters, sort };
+                setFilters(next);
+                setForm(current => ({ ...current, sort }));
+                window.history.replaceState(null, "", `/archive?${new URLSearchParams(Object.entries(next).filter(([, value]) => Boolean(value)))}`);
+              }}>
+                <option value="popular">人気順</option>
+                <option value="newest">新しい順</option>
+                <option value="oldest">古い順</option>
+              </select>
+            </div>
           </div>
           {activeFilters.length ? (
             <div aria-label="適用中の絞り込み" className="active-filters">

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
+import { CommentLikeButton } from "@/components/comment-like-button";
 import { apiRequest } from "@/components/api-client";
 import { ExternalLinkIcon, RefreshIcon } from "@/components/icons";
 import { formatDateTime } from "@/components/report-card";
@@ -25,21 +26,27 @@ export function ReportComments({
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal, manual = false) => {
+  const loadingRequest = useRef(false);
+
+  const load = useCallback(async (signal?: AbortSignal, manual = false, background = false) => {
+    if (loadingRequest.current) return;
+    loadingRequest.current = true;
     if (manual) setRefreshing(true);
-    else setLoading(true);
+    else if (!background) setLoading(true);
     setError(null);
     try {
       const result = await apiRequest<ReportCommentsResult>(
         `/api/reports/${reportId}/comments`,
         { signal },
       );
+      if (signal?.aborted) return;
       setComments(result.comments);
       setAvailable(result.available);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(cause instanceof Error ? cause.message : "コメントを読み込めませんでした");
     } finally {
+      loadingRequest.current = false;
       if (!signal?.aborted) {
         setLoading(false);
         setRefreshing(false);
@@ -55,6 +62,17 @@ export function ReportComments({
       controller.abort();
     };
   }, [load]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    function refresh() {
+      if (document.visibilityState !== "visible" || posting || [...document.querySelectorAll("video")].some(video => !video.paused)) return;
+      void load(controller.signal, false, true);
+    }
+    const timer = window.setInterval(refresh, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { controller.abort(); window.clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+  }, [load, posting]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,7 +101,7 @@ export function ReportComments({
       <div className="report-comments__heading">
         <div>
           <h2 id="comments-heading">コメント <span>{comments.length}</span></h2>
-          <p>Slackスレッドと同期しています。</p>
+          <p>Slackの返信・画像・動画を30秒ごとに同期します。</p>
         </div>
         <button
           className="button button--ghost button--small"
@@ -112,6 +130,13 @@ export function ReportComments({
                   <time dateTime={comment.createdAt}>{formatDateTime(comment.createdAt)}</time>
                 </div>
                 <p>{comment.body}</p>
+                <CommentLikeButton key={`${comment.id}:${comment.likeCount}:${comment.likedByCurrentUser}`} reportId={reportId} comment={comment} disabled={!canPost} />
+                {comment.attachments?.map(file => file.url ? <div key={file.id}>
+                  {file.mimeType.startsWith("video/") ? <video controls playsInline preload="none" src={file.url} aria-label={file.filename} style={{ maxWidth: "100%", maxHeight: 480 }} /> :
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={file.url} alt={file.filename} loading="lazy" style={{ maxWidth: "100%", maxHeight: 480 }} />}
+                  <a href={file.url} target="_blank" rel="noreferrer">{file.filename}</a>
+                </div> : <p key={file.id}>{file.filename}（添付を取得できませんでした）</p>)}
               </div>
             </li>
           ))}

@@ -1,3 +1,5 @@
+export const maxDuration = 300;
+
 import { apiResponse, reportId, reportResponse } from "@/app/api/_shared";
 import { recordAuditEvent } from "@/server/audit";
 import { requireCurrentUser } from "@/server/auth";

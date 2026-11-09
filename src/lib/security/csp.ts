@@ -8,7 +8,7 @@ export function createCspHeader(nonce: string, isDevelopment: boolean): string {
     "script-src-attr 'none'",
     `style-src 'self' 'nonce-${nonce}'`,
     "style-src-attr 'unsafe-inline'",
-    "img-src 'self' blob: data: https://*.supabase.co https://avatars.slack-edge.com https://secure.gravatar.com",
+    "img-src 'self' blob: data: https://*.supabase.co https://avatars.slack-edge.com https://secure.gravatar.com https://lh3.googleusercontent.com",
     "font-src 'self' data:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
     "worker-src 'self' blob:",

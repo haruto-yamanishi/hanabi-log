@@ -21,6 +21,10 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    authProvider?: "google";
+    googleEmail?: string;
+    googleSlackUserId?: string;
+    googleTeamId?: string;
     memberId?: string;
     slackUserId?: string;
     role?: MemberRole;

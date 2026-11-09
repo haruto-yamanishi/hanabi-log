@@ -1,0 +1,106 @@
+/* Seasonal layer only. Editorial geometry, brand colors and controls stay intact. */
+.seasonal-root { display: contents; }
+.halloween-scene { pointer-events: none; user-select: none; position: relative; flex-shrink: 0; }
+.halloween-friend { position: absolute; display: block; }
+.halloween-friend svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.halloween-pumpkin { width: 125px; bottom: 12px; left: 44px; transform: rotate(-7deg); }
+.halloween-ghost { width: 94px; bottom: 43px; right: 33px; animation: halloween-float 5s ease-in-out infinite; }
+.halloween-bat { width: 98px; top: 5px; left: 36px; transform: rotate(-12deg); animation: halloween-drift 6s ease-in-out infinite; }
+.halloween-bat--little { width: 54px; left: auto; right: 5px; top: 5px; animation-delay: -3s; }
+.halloween-wing { transform-box: view-box; animation: halloween-flap-left .85s ease-in-out infinite alternate; transform-origin: 90px 64px; }
+.halloween-wing--right { transform-origin: 110px 64px; animation-name: halloween-flap-right; }
+.halloween-bat--little .halloween-wing { animation-delay: -.4s; animation-duration: .7s; }
+.halloween-spark { position: absolute; width: 8px; height: 8px; background: #F8D49C; clip-path: polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%); }
+.halloween-spark--one { left: 15px; top: 90px; }
+.halloween-spark--two { right: 12px; bottom: 35px; width: 12px; height: 12px; }
+.halloween-caption { position: absolute; bottom: 0; left: 0; width: 100%; text-align: center; color: #E8C89D; font: 9px var(--font-latin), sans-serif; letter-spacing: .16em; }
+.halloween-scene--hero { width: 290px; height: 188px; margin: -16px 0 -18px; }
+[data-halloween="true"] .home-hero { align-items: center; flex-wrap: nowrap; gap: 12px; }
+[data-halloween="true"] .home-hero > div:first-child { flex-shrink: 0; }
+[data-halloween="true"] .home-hero__action { flex-shrink: 0; }
+/* A compact resident in shared page headers, never positioned over the copy. */
+.halloween-scene--header { width: 88px; height: 74px; margin-left: auto; align-self: center; }
+.halloween-scene--header .halloween-pumpkin { width: 49px; left: 0; bottom: 0; }
+.halloween-scene--header .halloween-ghost { width: 42px; right: 0; bottom: 16px; animation-delay: -2s; }
+.halloween-scene--header .halloween-bat { display: none; }
+/* Brand decorations sit beside the mark; the link retains its full hit area. */
+.sidebar__brand, .mobile-header .brand { position: relative; }
+.halloween-scene--brand { position: absolute; width: 70px; height: 88px; right: -3px; top: 0; }
+.halloween-scene--brand .halloween-pumpkin { width: 44px; left: 19px; bottom: 0; }
+.halloween-scene--brand .halloween-bat { width: 54px; left: 0; top: 0; }
+.halloween-scene--brand .halloween-ghost { display: none; }
+.mobile-header .halloween-scene--brand { width: 24px; height: 30px; right: -12px; top: 43px; }
+.mobile-header .halloween-scene--brand .halloween-pumpkin { width: 26px; left: 0; bottom: 0; }
+.mobile-header .halloween-scene--brand .halloween-bat { display: none; }
+.sidebar--collapsed .halloween-scene--brand { right: 0; top: 19px; width: 22px; height: 22px; }
+.sidebar--collapsed .halloween-scene--brand .halloween-pumpkin { width: 24px; left: 0; bottom: 0; }
+.sidebar--collapsed .halloween-scene--brand .halloween-bat { display: none; }
+/* Loading: retain the existing logo, arch and 1.1-second lifetime. */
+.halloween-scene--loading { position: absolute; inset: 0; }
+.halloween-scene--loading .halloween-pumpkin { width: 66px; left: calc(50% + 140px); bottom: calc(50% - 125px); }
+.halloween-scene--loading .halloween-bat { width: 100px; left: calc(50% - 190px); top: calc(50% - 125px); animation: halloween-orbit 3s ease-in-out infinite; }
+.halloween-scene--loading .halloween-bat--little { width: 64px; left: calc(50% + 110px); top: calc(50% - 85px); animation-delay: -1.4s; }
+.halloween-scene--loading .halloween-ghost { width: 90px; right: 8%; bottom: 13%; }
+.halloween-scene--loading .halloween-caption { bottom: calc(50% - 170px); color: #805129; }
+.halloween-scene--loading .halloween-spark--one { left: 15%; top: 24%; }
+.halloween-scene--loading .halloween-spark--two { right: 20%; bottom: 24%; }
+/* Login illustration occupies its own space beneath the story. */
+.halloween-scene--login { width: min(100%, 440px); height: 270px; margin: 35px auto 0; }
+.halloween-scene--login .halloween-pumpkin { width: 184px; left: 50px; bottom: 12px; }
+.halloween-scene--login .halloween-ghost { width: 138px; right: 38px; bottom: 65px; }
+.halloween-scene--login .halloween-bat { width: 130px; left: 28px; top: 0; }
+.halloween-scene--login .halloween-bat--little { width: 70px; left: auto; right: 0; top: 12px; }
+@keyframes halloween-float { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-9px) rotate(5deg); } }
+@keyframes halloween-drift { 0%,100% { transform: translateY(0) rotate(-12deg); } 50% { transform: translateY(-5px) rotate(-4deg); } }
+@keyframes halloween-flap-left { from { transform: rotate(-8deg) scaleY(.82); } to { transform: rotate(16deg) scaleY(1); } }
+@keyframes halloween-flap-right { from { transform: rotate(8deg) scaleY(.82); } to { transform: rotate(-16deg) scaleY(1); } }
+@keyframes halloween-orbit { 0%,100% { transform: translate(0,0) rotate(-16deg); } 50% { transform: translate(25px,-18px) rotate(4deg); } }
+@media (min-width: 900px) and (max-width: 1170px) {
+  .halloween-scene--hero { width: 215px; }
+  .halloween-scene--hero .halloween-pumpkin { left: 7px; width: 110px; }
+  .halloween-scene--hero .halloween-ghost { right: 0; width: 80px; }
+}
+@media (max-width: 599px) {
+  [data-halloween="true"] .home-hero { flex-wrap: wrap; padding: 24px 20px; gap: 14px; }
+  [data-halloween="true"] .home-hero > div:first-child { width: 100%; }
+  .halloween-scene--hero { position: absolute; right: 3px; bottom: 12px; width: 166px; height: 130px; margin: 0; }
+  .halloween-scene--hero .halloween-pumpkin { width: 80px; left: 14px; bottom: 7px; }
+  .halloween-scene--hero .halloween-ghost { width: 60px; right: 4px; bottom: 34px; }
+  .halloween-scene--hero .halloween-bat { width: 57px; left: 18px; top: 5px; }
+  .halloween-scene--hero .halloween-bat--little, .halloween-scene--hero .halloween-caption { display: none; }
+  .halloween-scene--hero .halloween-spark--one { left: 3px; top: 70px; }
+  [data-halloween="true"] .home-hero__action { margin-top: 35px; }
+  .halloween-scene--header { width: 55px; height: 52px; }
+  .halloween-scene--header .halloween-pumpkin { width: 36px; }
+  .halloween-scene--header .halloween-ghost { width: 29px; bottom: 13px; }
+  .halloween-scene--login { height: 180px; width: 280px; margin-top: 24px; }
+  .halloween-scene--login .halloween-pumpkin { width: 116px; left: 33px; }
+  .halloween-scene--login .halloween-ghost { width: 85px; right: 25px; bottom: 44px; }
+  .halloween-scene--login .halloween-bat { width: 80px; left: 10px; }
+  .halloween-scene--login .halloween-bat--little { width: 45px; left: auto; right: 5px; }
+  [data-halloween="true"] .login-wordmark { margin-bottom: 20px; }
+  .halloween-scene--loading .halloween-bat { left: calc(50% - 150px); width: 78px; }
+  .halloween-scene--loading .halloween-bat--little { left: calc(50% + 80px); width: 50px; }
+  .halloween-scene--loading .halloween-ghost { width: 64px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .halloween-scene *, .halloween-wing { animation: none !important; transition: none !important; }
+}
+
+
+@media (max-width: 599px) {
+  .halloween-scene--loading .halloween-pumpkin { width: 48px; left: calc(50% + 100px); }
+}
+@media (min-width: 600px) and (max-width: 720px) {
+  .halloween-scene--hero { width: 180px; }
+  .halloween-scene--hero .halloween-pumpkin { left: 0; width: 100px; }
+  .halloween-scene--hero .halloween-ghost { right: 0; width: 70px; }
+  .halloween-scene--hero .halloween-bat--little { display: none; }
+}
+@media (min-width: 900px) {
+  [data-halloween="true"] .login-story__content { display: grid; grid-template-columns: minmax(0, 1fr) 380px; column-gap: 48px; max-width: 1040px; }
+  [data-halloween="true"] .login-story__content > .login-wordmark,
+  [data-halloween="true"] .login-story__content > h1,
+  [data-halloween="true"] .login-story__content > p { grid-column: 1; }
+  .halloween-scene--login { grid-column: 2; grid-row: 1 / 4; align-self: center; margin: 0; }
+}

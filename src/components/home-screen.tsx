@@ -1,5 +1,6 @@
 "use client";
 
+import { HalloweenScene } from "@/components/seasonal/halloween-scene";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ACTIVITY_AREAS, activityAreaClassName, type ActivityArea } from "@/lib/constants";
@@ -60,6 +61,7 @@ export function HomeScreen() {
           <p className="home-hero__date"><CalendarIcon />{dateLabel}</p>
           <h1>Hanabi Log</h1>
         </div>
+        <HalloweenScene variant="hero" />
         <Link className="button button--primary home-hero__action" href="/reports/new">
           <PlusIcon />
           日報を書く

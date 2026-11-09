@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({ user: vi.fn(), history: vi.fn() }));
 vi.mock("@/server/auth", () => ({ requireCurrentUser: mocks.user }));
-vi.mock("@/server/integrations/like-notification-history", () => ({ listLikeNotificationHistory: mocks.history }));
+vi.mock("@/server/integrations/system-dm-history", () => ({ listSystemDmHistory: mocks.history }));
 import { GET } from "./route";
 
 beforeEach(() => vi.clearAllMocks());

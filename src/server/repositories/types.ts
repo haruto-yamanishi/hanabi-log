@@ -98,7 +98,7 @@ export interface ReportRepository extends OutboxRepository {
   upsertMember(input: MemberUpsertInput): Promise<Member>;
   getMember(memberId: string): Promise<Member | null>;
   listMembers(): Promise<Member[]>;
-  setMemberRole(memberId: string, role: Member["role"]): Promise<Member | null>;
+  setMemberRole(memberId: string, role: Member["role"], actor?: Pick<CurrentUser, "id" | "slackUserId" | "displayName">): Promise<Member | null>;
   setMemberActivity(memberId: string, isActive: boolean): Promise<Member | null>;
   deleteMember(memberId: string): Promise<DeleteMemberResult>;
   recordContributionEvents(events: ContributionEventInput[]): Promise<void>;
